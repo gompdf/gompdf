@@ -1,0 +1,15 @@
+# Go
+bin/
+*.exe
+*.test
+*.out
+
+
+# Tools
+/.tools/
+/.cache/
+
+
+# IDE
+.vscode/
+.idea/
