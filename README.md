@@ -1,5 +1,9 @@
 # GomPDF
 
+<img width="500" height="500" alt="1" src="https://github.com/user-attachments/assets/eab81250-47cd-4931-a7bd-048e90e599b9" />
+
+---
+
 A native HTML/CSS → PDF engine in Go, focused on CSS 2.1 subset, robust typography (Harfbuzz), and server safety.
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/henrrius/gompdf)](https://goreportcard.com/report/github.com/henrrius/gompdf)
