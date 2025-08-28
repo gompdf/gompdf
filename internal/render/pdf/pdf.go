@@ -71,13 +71,12 @@ func (r *Renderer) AddFontDirectory(dir string) {
 func (r *Renderer) Render(pages []*pagination.Page, outputPath string, options RenderOptions) error {
 	// Reset the rendered texts map to ensure clean state for each rendering
 	r.renderedTexts = make(map[string]bool)
-	
+
 	// Always use the orientation from options
 	orient := options.Orientation
 	if orient == "" {
 		orient = "P" // Default to portrait if not specified
 	}
-	println(orient)
 
 	pdf := fpdf.New(orient, "pt", "", "")
 
@@ -366,9 +365,9 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 
 	// Generate a unique ID for this text box to avoid duplicate rendering
 	// Include more position details to better detect duplicates
-	textID := fmt.Sprintf("%s-%.2f-%.2f-%.2f-%.2f", 
+	textID := fmt.Sprintf("%s-%.2f-%.2f-%.2f-%.2f",
 		box.Text, box.X, box.Y, box.Width, box.Height)
-	
+
 	// Check if we've already rendered this text
 	if r.renderedTexts[textID] {
 		// Skip if already rendered
@@ -377,7 +376,7 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 		}
 		return
 	}
-	
+
 	// Mark as rendered
 	r.renderedTexts[textID] = true
 
@@ -453,7 +452,7 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 	}
 
 	textWidth := pdf.GetStringWidth(text)
-	startX := box.X
+	var startX float64
 	switch align {
 	case "center":
 		startX = box.X + (box.Width-textWidth)/2
@@ -666,17 +665,14 @@ func toAlpha(n int, upper bool) string {
 
 // renderTableElement handles special rendering for table elements
 func (r *Renderer) renderTableElement(pdf *fpdf.Fpdf, box *layout.BlockBox, tag string) {
-	// Check if we should render any borders at all
 	if !r.RenderBorders {
 		return
 	}
 
-	// Check if there's an explicit border style
 	hasBorder := false
 	borderWidth := 0.0
 	borderColor := [3]int{0, 0, 0}
 
-	// Only apply borders if explicitly set in CSS
 	if width, exists := box.Style["border-width"]; exists && width.Value != "" && width.Value != "0" {
 		borderWidth = parseFloat(width.Value, 0.0)
 		hasBorder = borderWidth > 0
@@ -686,7 +682,6 @@ func (r *Renderer) renderTableElement(pdf *fpdf.Fpdf, box *layout.BlockBox, tag 
 		borderColor = parseColor(color.Value)
 	}
 
-	// Only draw borders if explicitly requested
 	if hasBorder {
 		pdf.SetDrawColor(borderColor[0], borderColor[1], borderColor[2])
 		pdf.SetLineWidth(borderWidth)
@@ -698,7 +693,6 @@ func (r *Renderer) renderTableElement(pdf *fpdf.Fpdf, box *layout.BlockBox, tag 
 		}
 	}
 
-	// For header cells, add a light gray background if no explicit background
 	if tag == "th" {
 		hasCustomBg := false
 		if bgColor, exists := box.Style["background-color"]; exists && bgColor.Value != "" {
@@ -706,9 +700,8 @@ func (r *Renderer) renderTableElement(pdf *fpdf.Fpdf, box *layout.BlockBox, tag 
 		}
 
 		if !hasCustomBg {
-			// Light gray background for header cells
 			pdf.SetFillColor(240, 240, 240)
-			pdf.Rect(box.X, box.Y, box.Width, box.Height, "F") // Fill only, no border
+			pdf.Rect(box.X, box.Y, box.Width, box.Height, "F")
 		}
 	}
 }

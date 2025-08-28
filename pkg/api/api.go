@@ -88,10 +88,10 @@ func (c *Converter) ConvertToFile(htmlContent, outputPath string) error {
 	styleEngine.AddStylesheet(uaStylesheet)
 
 	for _, cssText := range collectDocumentStylesheets(doc.Root, c.loader, c.options.Debug) {
-		if sheet, err := cssParser.ParseString(cssText); err == nil {
+		if sheet, parseErr := cssParser.ParseString(cssText); parseErr == nil {
 			styleEngine.AddStylesheet(sheet)
 		} else if c.options.Debug {
-			fmt.Printf("Failed to parse stylesheet: %v\n", err)
+			fmt.Printf("Failed to parse stylesheet: %v\n", parseErr)
 		}
 	}
 	computedStyles := styleEngine.ComputeStyles(doc) // Compute styles and use the result

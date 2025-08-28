@@ -22,11 +22,30 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Create temporary GoReleaser config
+        run: |
+          cat > .goreleaser.temp.yml << EOF
+          builds:
+            - id: gompdf
+              main: ./cmd/gompdf
+              binary: gompdf
+              goos:
+                - linux
+                - windows
+                - darwin
+              goarch:
+                - amd64
+                - arm64
+                - "386"
+              env:
+                - CGO_ENABLED=0
+          EOF
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v4
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean
+          args: release --clean --config .goreleaser.temp.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -591,7 +591,7 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 
 		isBlock := e.isBlockTag(strings.ToLower(node.Data))
 
-		nodeStyle := style.ComputedStyle{} // Default empty style
+		var nodeStyle style.ComputedStyle // Default empty style
 
 		parentStyle := style.ComputedStyle{}
 		if parentBox != nil && parentBox.GetNode() != nil {
@@ -991,7 +991,8 @@ func splitTokens(s string) []string {
 			*curIsSpace = isSp
 		}
 
-		if *curIsSpace != isSp {
+		switch {
+		case *curIsSpace != isSp:
 			if len(cur) > 0 {
 				tokens = append(tokens, string(cur))
 			}
@@ -1003,11 +1004,11 @@ func splitTokens(s string) []string {
 				cur = append(cur, r)
 			}
 			*curIsSpace = isSp
-		} else if isSp {
+		case isSp:
 			if len(cur) == 0 {
 				cur = append(cur, ' ')
 			}
-		} else {
+		default:
 			cur = append(cur, r)
 		}
 	}
