@@ -155,6 +155,20 @@ func (p *Paginator) Paginate(rootBox layout.Box) []*Page {
 			pageIndex = 0
 		}
 		
+		// Special case: ensure content near the bottom of a page is properly assigned
+		// to avoid duplicates across page boundaries
+		if pageIndex > 0 && math.Mod(relativeY, pageHeight) > (pageHeight * 0.9) {
+			// If content is in the bottom 10% of a page, ensure it's consistently assigned
+			// to the same page to prevent duplicates
+			if blockBox, ok := box.(*layout.BlockBox); ok && blockBox.Node != nil {
+				// For table rows, ensure they stay on the same page as their siblings
+				if blockBox.Node.Data == "tr" || blockBox.Node.Data == "td" {
+					// Use a consistent page assignment for table rows near page boundaries
+					pageIndex = int(math.Floor(relativeY / pageHeight))
+				}
+			}
+		}
+		
 		// If content is a table row, check if it should be kept with its table
 		if blockBox, ok := box.(*layout.BlockBox); ok && blockBox.Node != nil && blockBox.Node.Data == "tr" {
 			// Keep table rows together when possible
@@ -242,87 +256,154 @@ func (p *Paginator) Paginate(rootBox layout.Box) []*Page {
 			validPages = append(validPages, page)
 		}
 	}
-	
 	return validPages
 }
 
+// These functions have been replaced with direct formatting in the code
+
 // distributeContentToPages places content boxes on their respective pages
 func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tableRowPageMap map[string]int, contentBoxes []layout.Box, margins *Margins) {
-	// Get the first content box Y position as reference
-	baseY := 0.0
-	if len(contentBoxes) > 0 {
-		baseY = contentBoxes[0].GetY()
+	// Track which boxes have been added to avoid duplicates
+	addedBoxes := make(map[layout.Box]bool)
+	// Track boxes by their content hash to avoid duplicates across pages
+	contentHashes := make(map[string]bool)
+	
+	// First, handle headers and footers - they should appear on every page
+	for _, box := range contentBoxes {
+		// Skip if already processed
+		if addedBoxes[box] {
+			continue
+		}
+		
+		// Check if this is a header or footer
+		isHeaderElement := isHeader(box)
+		isFooterElement := isFooter(box)
+		
+		if isHeaderElement || isFooterElement {
+			// Add to all pages
+			for i := range pages {
+				// Clone the box for each page to avoid shared references
+				clonedBox := cloneBox(box)
+				
+				// Position header at the top of each page (after the top margin)
+				if isHeaderElement {
+					// For headers, keep the original X but adjust Y to top of page + margins
+					clonedBox.SetPosition(clonedBox.GetX(), margins.Top)
+				}
+				
+				// Position footer at the bottom of each page (before the bottom margin)
+				if isFooterElement {
+					// For footers, keep the original X but adjust Y to bottom of page - margins
+					clonedBox.SetPosition(clonedBox.GetX(), pages[i].Height - margins.Bottom - box.GetHeight())
+				}
+				
+				// Add to page
+				pages[i].Boxes = append(pages[i].Boxes, clonedBox)
+			}
+			
+			// Mark as processed
+			addedBoxes[box] = true
+		}
 	}
 	
-	// Calculate the effective page height (content area)
-	pageHeight := pages[0].Height - float64(margins.Top) - float64(margins.Bottom)
-	
-	// Track boxes already added to pages to avoid duplicates
-	addedBoxes := make(map[string]bool)
-	
-	// Place content boxes on their respective pages
+	// Now handle regular content
 	for pageIndex, boxes := range pageBoxes {
-		processedRows := make(map[string]bool)
+		// Skip if page doesn't exist (should never happen)
+		if pageIndex >= len(pages) {
+			continue
+		}
 		
+		// Get the page
+		page := pages[pageIndex]
+		
+		// For first page, find the minimum Y position of all content
+		if pageIndex == 0 {
+			// Find the minimum Y position of all content for reference
+			minY := float64(1000000) // Large initial value
+			for _, box := range boxes {
+				if box.GetY() < minY {
+					minY = box.GetY()
+				}
+			}
+			// We don't need to store this in baselineY anymore
+		}
+		
+		// Process boxes for this page
 		for _, box := range boxes {
-			// Generate a unique ID for this box
-			boxID := fmt.Sprintf("%p", box)
-			
-			// Skip if we've already added this box to a page
-			if addedBoxes[boxID] {
+			// Skip if already processed
+			if addedBoxes[box] {
 				continue
 			}
 			
-			// Mark this box as added
-			addedBoxes[boxID] = true
+			// Generate a content hash for duplicate detection across pages
+			contentHash := ""
+			if blockBox, ok := box.(*layout.BlockBox); ok && blockBox.Node != nil {
+				// For table rows, create a hash based on content
+				if blockBox.Node.Data == "tr" || blockBox.Node.Data == "td" {
+					// Create a hash based on the node's data and position
+					contentHash = fmt.Sprintf("%s-%.2f-%.2f", blockBox.Node.Data, box.GetX(), box.GetY())
+					
+					// Skip if we've already processed this content
+					if contentHashes[contentHash] {
+						continue
+					}
+					
+					// Mark this content as processed
+					contentHashes[contentHash] = true
+				}
+			}
 			
-			// Skip if this is a table row that belongs to another page
+			// Skip table rows that have been mapped to a different page
 			if blockBox, ok := box.(*layout.BlockBox); ok && blockBox.Node != nil && blockBox.Node.Data == "tr" {
-				rowID := fmt.Sprintf("%p", blockBox.Node)
-				
-				// If this row is assigned to another page or already processed, skip it
-				if tableRowPageMap[rowID] != pageIndex || processedRows[rowID] {
+				// Generate a simple ID based on position and content
+				id := fmt.Sprintf("row-%.2f-%.2f-%s", box.GetX(), box.GetY(), blockBox.Node.Data)
+				if mappedPage, exists := tableRowPageMap[id]; exists && mappedPage != pageIndex {
+					// This row has been mapped to a different page, skip it
 					continue
 				}
-				
-				processedRows[rowID] = true
 			}
 			
-			// Clone the box for this page to avoid sharing references
-			boxClone := cloneBox(box)
+			// Clone the box to avoid shared references
+			clonedBox := cloneBox(box)
 			
-			// Calculate new Y position based on page index
-			var newY float64
-			
-			if pageIndex == 0 {
-				// For first page, keep original position
-				newY = boxClone.GetY()
-			} else {
-				// For subsequent pages, calculate position relative to page top
-				// Calculate which page this content would naturally fall on
-				relativeY := boxClone.GetY() - baseY
-				naturalPageIndex := int(math.Floor(relativeY / pageHeight))
+			// Adjust Y position based on page
+			if pageIndex > 0 {
+				// For subsequent pages, calculate the relative position
+				relativeY := box.GetY() - contentBoxes[0].GetY()
+				pageHeight := page.Height - margins.Top - margins.Bottom
 				
-				// If this content is being placed on a different page than its natural page,
-				// adjust its position accordingly
-				if naturalPageIndex != pageIndex {
-					// Content is being moved to a different page
-					// Position it at the top of the target page
-					newY = float64(margins.Top)
-				} else {
-					// Content is on its natural page
-					// Calculate its position within the page
-					positionWithinPage := relativeY - (float64(naturalPageIndex) * pageHeight)
-					newY = float64(margins.Top) + positionWithinPage
+				// Calculate position within the page
+				positionInPage := relativeY - (float64(pageIndex) * pageHeight)
+				
+				// Set the new Y position
+				newY := margins.Top + positionInPage
+				
+				// Ensure we respect the bottom margin
+				if newY + clonedBox.GetHeight() > page.Height - margins.Bottom {
+					// This box would extend beyond the bottom margin
+					// Adjust its position to respect the margin
+					newY = page.Height - margins.Bottom - clonedBox.GetHeight()
+				}
+				
+				clonedBox.SetPosition(clonedBox.GetX(), newY)
+			} else if pageIndex == 0 {
+				// For first page, ensure content respects bottom margin
+				if clonedBox.GetY() + clonedBox.GetHeight() > page.Height - margins.Bottom {
+					// This box would extend beyond the bottom margin
+					// Check if it's a table row that should be kept with its table
+					if blockBox, ok := clonedBox.(*layout.BlockBox); ok && blockBox.Node != nil && 
+					   (blockBox.Node.Data == "tr" || blockBox.Node.Data == "td") {
+						// Skip this box on this page - it will be handled on the next page
+						continue
+					}
 				}
 			}
 			
-			// Calculate how much to shift the box
-			deltaY := newY - boxClone.GetY()
-			shiftBox(boxClone, 0, deltaY)
+			// Add to page
+			page.Boxes = append(page.Boxes, clonedBox)
 			
-			// Add box to the appropriate page
-			pages[pageIndex].Boxes = append(pages[pageIndex].Boxes, boxClone)
+			// Mark as processed
+			addedBoxes[box] = true
 		}
 	}
 }
