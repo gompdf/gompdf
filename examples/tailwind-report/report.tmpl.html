@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>User Activity Report</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header with fixed width table cells -->
+    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 20px; table-layout: fixed;">
+      <tr>
+        <td width="250" style="padding-bottom: 15px;">
+          <div class="logo" style="font-size: 22px; font-weight: bold;">ACME Corporation</div>
+        </td>
+        <td style="text-align: right; padding-bottom: 15px;">
+          <div class="report-title" style="font-size: 22px; font-weight: bold;">User Activity Report</div>
+          <div class="report-date" style="font-size: 16px;">Generated on {{.Date}}</div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Summary Section -->
+    <div style="margin-bottom: 20px;">
+      <h2 style="font-size: 18px; margin-bottom: 15px;">Monthly Overview</h2>
+      <table width="100%" border="0" cellspacing="10" cellpadding="0">
+        <tr>
+          <td width="33%" style="padding: 15px;">
+            <div style="color: #6b7280; font-size: 14px; margin-bottom: 5px;">Total Users</div>
+            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;">{{.TotalUsers}}</div>
+            <div style="color: #10b981; font-size: 14px;">+{{.NewUsers}} new this month</div>
+          </td>
+          <td width="33%" style="padding: 15px;">
+            <div style="color: #6b7280; font-size: 14px; margin-bottom: 5px;">Active Users</div>
+            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;">{{.ActiveUsers}}</div>
+            <div style="color: #10b981; font-size: 14px;">+{{.ActiveUsersChange}}% from last month</div>
+          </td>
+          <td width="33%" style="padding: 15px;">
+            <div style="color: #6b7280; font-size: 14px; margin-bottom: 5px;">Avg. Session Duration</div>
+            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;">{{.AvgSessionDuration}}</div>
+            <div style="color: #ef4444; font-size: 14px;">-{{.AvgSessionChange}}% from last month</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Table Section -->
+    <div class="table-container">
+      <h2 style="font-size: 18px; margin-bottom: 15px;">User Activity Details</h2>
+      <div style="overflow-x: auto; width: 100%;">
+        <table class="table" style="width: 100%;">
+          <thead>
+            <tr>
+              <th style="width: 10%; text-align: left; padding: 12px 8px; font-weight: 600;">User ID</th>
+              <th style="width: 30%; text-align: left; padding: 12px 8px; font-weight: 600;">Name</th>
+              <th style="width: 35%; text-align: left; padding: 12px 8px; font-weight: 600;">Email</th>
+              <th style="width: 15%; text-align: left; padding: 12px 8px; font-weight: 600;">Last Login</th>
+              <th style="width: 10%; text-align: left; padding: 12px 8px; font-weight: 600;">Sessions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Users}}
+            <tr class="table-row">
+              <td style="width: 10%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.ID}}</td>
+              <td style="width: 30%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.Name}}</td>
+              <td style="width: 35%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.Email}}</td>
+              <td style="width: 15%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.LastLogin}}</td>
+              <td style="width: 10%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.Sessions}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    
+    <!-- Add margin at the bottom to prevent content from overlapping with footer -->
+    <div style="height: 72pt;"></div>
+  </div>
+</body>
+</html>

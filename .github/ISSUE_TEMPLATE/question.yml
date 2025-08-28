@@ -1,0 +1,40 @@
+name: Question
+description: Ask a question about this project
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your interest in GomPDF! Please use this template to ask questions about usage, features, or implementation details.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: A clear and concise description of your question.
+      placeholder: How do I...?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide any relevant context for your question (code samples, screenshots, etc.)
+      render: go
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version
+      description: What version of GomPDF are you using?
+      options:
+        - Latest release
+        - Main branch (development)
+        - Other (please specify)
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](../CODE_OF_CONDUCT.md)
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
