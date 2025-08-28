@@ -1,3 +1,4 @@
+# Configuración para golangci-lint v1
 linters:
   enable:
     - errcheck

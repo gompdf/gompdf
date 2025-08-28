@@ -25,6 +25,9 @@ jobs:
       - name: Create temporary GoReleaser config
         run: |
           cat > .goreleaser.temp.yml << EOF
+          # This is a GoReleaser configuration file with version 2
+          version: 2
+          
           builds:
             - id: gompdf
               main: ./cmd/gompdf
