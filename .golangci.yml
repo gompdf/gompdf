@@ -1,4 +1,5 @@
-# Configuración para golangci-lint v1
+# Configuración para golangci-lint
+version: 2
 linters:
   enable:
     - errcheck
@@ -20,8 +21,8 @@ linters:
     - gocritic
 
 linters-settings:
-  govet: {}
-  shadow: true
+  govet:
+    check-shadowing: true
   gocyclo:
     min-complexity: 15
   dupl:

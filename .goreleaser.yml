@@ -54,4 +54,4 @@ release:
 
 # Allow dirty git state during release
 git:
-  dirty: true
+  allow_dirty: true
