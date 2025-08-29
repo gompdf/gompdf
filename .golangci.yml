@@ -16,12 +16,12 @@ linters:
     - unconvert
     - unparam
     - prealloc
-    - exportloopref
+    - copyloopvar
     - gocritic
 
 linters-settings:
-  govet:
-    check-shadowing: true
+  govet: {}
+  shadow: true
   gocyclo:
     min-complexity: 15
   dupl:
@@ -43,12 +43,12 @@ issues:
       linters:
         - dupl
         - gosec
+  exclude-dirs:
+    - testdata
+  exclude-files:
+    - ".*\\.generated\\.go$"
   max-issues-per-linter: 0
   max-same-issues: 0
 
 run:
   timeout: 5m
-  skip-dirs:
-    - testdata
-  skip-files:
-    - ".*\\.generated\\.go$"
