@@ -52,6 +52,3 @@ release:
   draft: false
   prerelease: auto
 
-# Allow dirty git state during release
-git:
-  allow_dirty: true
