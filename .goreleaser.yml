@@ -51,3 +51,7 @@ release:
     name: gompdf
   draft: false
   prerelease: auto
+
+# Allow dirty git state during release
+git:
+  dirty: true
