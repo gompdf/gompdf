@@ -131,15 +131,15 @@ func main() {
 
 	// Create PDF with options
 	options := gompdf.DefaultOptions()
-	options.PageWidth = gompdf.PageSizeA4Width
-	options.PageHeight = gompdf.PageSizeA4Height
+	options.PageWidth = gompdf.PageSizeLetterWidth
+	options.PageHeight = gompdf.PageSizeLetterHeight
 	options.PageOrientation = gompdf.PageOrientationPortrait
 	options.MarginTop = 36
 	options.MarginBottom = 36
-	options.MarginLeft = 48
+	options.MarginLeft = 36
 	options.MarginRight = 36
 	options.ResourcePaths = []string{currentDir}
-	options.Debug = true
+	// options.Debug = true
 	// Enable debug mode for logging but disable box drawing
 
 	converter := gompdf.NewWithOptions(options)

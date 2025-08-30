@@ -74,7 +74,16 @@ func (p *Paginator) Paginate(rootBox layout.Box) []*Page {
 		return pages
 	}
 	var contentBoxes []layout.Box
-	collectBoxes(container, &contentBoxes)
+	// Collect only the descendants of the content container, not the container itself,
+	// to avoid duplicating the entire subtree on the first page
+	if bb, ok := container.(*layout.BlockBox); ok {
+		for _, child := range bb.Children {
+			collectBoxes(child, &contentBoxes)
+		}
+	} else {
+		// Fallback for non-block containers
+		collectBoxes(container, &contentBoxes)
+	}
 	sortBoxesByPosition(contentBoxes)
 
 	totalHeight := 0.0
@@ -178,6 +187,8 @@ func (p *Paginator) Paginate(rootBox layout.Box) []*Page {
 
 	distributeContentToPages(pages, pageBoxes, tableRowPageMap, contentBoxes, &p.Margins)
 
+	pages = p.reflowByBottomThreshold(pages)
+
 	validPages := make([]*Page, 0, len(pages))
 	for _, page := range pages {
 		if len(page.Boxes) > 0 {
@@ -192,6 +203,33 @@ func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tab
 	addedBoxes := make(map[layout.Box]bool)
 	contentHashes := make(map[string]bool)
 
+	// Helper to collect all node pointers under a box (including itself)
+	var gatherNodeKeys func(layout.Box, map[string]struct{})
+	gatherNodeKeys = func(x layout.Box, set map[string]struct{}) {
+		if x == nil {
+			return
+		}
+		if n := x.GetNode(); n != nil {
+			set[fmt.Sprintf("%p", n)] = struct{}{}
+		}
+		switch bb := x.(type) {
+		case *layout.BlockBox:
+			for _, ch := range bb.Children {
+				gatherNodeKeys(ch, set)
+			}
+		case *layout.InlineBox:
+			for _, ch := range bb.Children {
+				gatherNodeKeys(ch, set)
+			}
+		}
+	}
+
+	for _, box := range contentBoxes {
+		if addedBoxes[box] {
+			continue
+		}
+	}
+
 	for _, box := range contentBoxes {
 		if addedBoxes[box] {
 			continue
@@ -199,17 +237,30 @@ func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tab
 	}
 
 	for pageIndex, boxes := range pageBoxes {
-		if pageIndex >= len(pages) {
-			continue
+		// Ensure we have enough pages to cover referenced indices
+		for pageIndex >= len(pages) {
+			pages = append(pages, &Page{
+				Width:  pages[0].Width,
+				Height: pages[0].Height,
+				Boxes:  make([]layout.Box, 0),
+			})
 		}
 
-		page := pages[pageIndex]
+		// Base metrics (all pages share size)
+		basePage := pages[0]
+		effectivePageHeight := basePage.Height - margins.Top - margins.Bottom
+
+		// Compute min Y among boxes on the first page to normalize positions
+		var firstPageMinY float64
 		if pageIndex == 0 {
-			minY := float64(1000000) // Large initial value
-			for _, box := range boxes {
-				if box.GetY() < minY {
-					minY = box.GetY()
+			firstPageMinY = math.Inf(1)
+			for _, b := range boxes {
+				if y := b.GetY(); y < firstPageMinY {
+					firstPageMinY = y
 				}
+			}
+			if math.IsInf(firstPageMinY, 1) {
+				firstPageMinY = 0
 			}
 		}
 
@@ -232,7 +283,7 @@ func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tab
 			}
 
 			if blockBox, ok := box.(*layout.BlockBox); ok && blockBox.Node != nil && blockBox.Node.Data == "tr" {
-				id := fmt.Sprintf("row-%.2f-%.2f-%s", box.GetX(), box.GetY(), blockBox.Node.Data)
+				id := fmt.Sprintf("%p", blockBox.Node)
 				if mappedPage, exists := tableRowPageMap[id]; exists && mappedPage != pageIndex {
 					continue
 				}
@@ -240,31 +291,78 @@ func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tab
 
 			clonedBox := cloneBox(box)
 
-			if pageIndex > 0 {
+			// Decide final page and Y position
+			targetPageIndex := pageIndex
+			if targetPageIndex > 0 {
 				relativeY := box.GetY() - contentBoxes[0].GetY()
-				pageHeight := page.Height - margins.Top - margins.Bottom
-
-				positionInPage := relativeY - (float64(pageIndex) * pageHeight)
+				positionInPage := relativeY - (float64(targetPageIndex) * effectivePageHeight)
 				newY := margins.Top + positionInPage
 
-				if newY+clonedBox.GetHeight() > page.Height-margins.Bottom {
-					newY = page.Height - margins.Bottom - clonedBox.GetHeight()
+				// If it overflows, advance pages until it fits
+				for newY+clonedBox.GetHeight() > basePage.Height-margins.Bottom {
+					targetPageIndex++
+					for targetPageIndex >= len(pages) {
+						pages = append(pages, &Page{
+							Width:  basePage.Width,
+							Height: basePage.Height,
+							Boxes:  make([]layout.Box, 0),
+						})
+					}
+					positionInPage = relativeY - (float64(targetPageIndex) * effectivePageHeight)
+					newY = margins.Top + positionInPage
 				}
-
+				if newY < margins.Top {
+					newY = margins.Top
+				}
 				clonedBox.SetPosition(clonedBox.GetX(), newY)
-			} else if pageIndex == 0 {
-				if clonedBox.GetY()+clonedBox.GetHeight() > page.Height-margins.Bottom {
-					continue
+			} else {
+				// pageIndex == 0
+				normalizedY := margins.Top + (box.GetY() - firstPageMinY)
+				if normalizedY < margins.Top {
+					normalizedY = margins.Top
+				}
+				// Check overflow using normalized Y against the page's drawable bottom
+				if normalizedY+clonedBox.GetHeight() >= (basePage.Height - margins.Bottom - 0.01) {
+					// Move to next page top if it doesn't fit on first page
+					targetPageIndex = 1
+					for targetPageIndex >= len(pages) {
+						pages = append(pages, &Page{
+							Width:  basePage.Width,
+							Height: basePage.Height,
+							Boxes:  make([]layout.Box, 0),
+						})
+					}
+					clonedBox.SetPosition(clonedBox.GetX(), margins.Top)
+					// Also remove any boxes already added to page 0 that belong to this box's subtree
+					if len(pages[0].Boxes) > 0 {
+						subtree := make(map[string]struct{})
+						gatherNodeKeys(box, subtree)
+						filtered := pages[0].Boxes[:0]
+						for _, pb := range pages[0].Boxes {
+							keep := true
+							if n := pb.GetNode(); n != nil {
+								if _, exists := subtree[fmt.Sprintf("%p", n)]; exists {
+									keep = false
+								}
+							}
+							if keep {
+								filtered = append(filtered, pb)
+							}
+						}
+						pages[0].Boxes = filtered
+					}
+				} else {
+					// Keep on first page at normalized position respecting top margin
+					clonedBox.SetPosition(clonedBox.GetX(), normalizedY)
 				}
 			}
 
-			page.Boxes = append(page.Boxes, clonedBox)
+			pages[targetPageIndex].Boxes = append(pages[targetPageIndex].Boxes, clonedBox)
 			addedBoxes[box] = true
 		}
 	}
 }
 
-// getContentContainer returns the main content container (usually body)
 func getContentContainer(root layout.Box) layout.Box {
 	if blockBox, ok := root.(*layout.BlockBox); ok {
 		return blockBox
@@ -288,11 +386,9 @@ func collectBoxes(container layout.Box, boxes *[]layout.Box) {
 		}
 	case *layout.InlineBox:
 		for _, child := range b.Children {
-			*boxes = append(*boxes, child)
 			collectBoxes(child, boxes)
 		}
 	}
-
 }
 
 // sortBoxesByPosition sorts boxes by their Y position using a more efficient algorithm
@@ -331,10 +427,6 @@ func cloneBox(box layout.Box) layout.Box {
 			BorderBottom:  b.BorderBottom,
 			BorderLeft:    b.BorderLeft,
 			Children:      make([]layout.Box, len(b.Children)),
-		}
-
-		for i, child := range b.Children {
-			clone.Children[i] = cloneBox(child)
 		}
 
 		return clone
@@ -378,6 +470,135 @@ func cloneBox(box layout.Box) layout.Box {
 func (p *Paginator) CalculatePageCount(rootBox *layout.BlockBox) int {
 	pages := p.Paginate(rootBox)
 	return len(pages)
+}
+
+// reflowByBottomThreshold moves boxes that overflow the bottom margin to the next page
+func (p *Paginator) reflowByBottomThreshold(pages []*Page) []*Page {
+	if len(pages) == 0 {
+		return pages
+	}
+
+	bottomThreshold := p.PageSize.Height - p.Margins.Bottom
+	availablePageHeight := p.PageSize.Height - p.Margins.Top - p.Margins.Bottom
+	// Helper to collect all node pointers under a box (including itself)
+	var gatherNodeKeys func(layout.Box, map[string]struct{})
+	gatherNodeKeys = func(x layout.Box, set map[string]struct{}) {
+		if x == nil {
+			return
+		}
+		if n := x.GetNode(); n != nil {
+			set[fmt.Sprintf("%p", n)] = struct{}{}
+		}
+		switch bb := x.(type) {
+		case *layout.BlockBox:
+			for _, ch := range bb.Children {
+				gatherNodeKeys(ch, set)
+			}
+		case *layout.InlineBox:
+			for _, ch := range bb.Children {
+				gatherNodeKeys(ch, set)
+			}
+		}
+	}
+	maxIterations := 50
+	for iter := 0; iter < maxIterations; iter++ {
+		movedAny := false
+		// Iterate through pages and move overflow boxes forward
+		for i := 0; i < len(pages); i++ {
+			page := pages[i]
+			for j := 0; j < len(page.Boxes); {
+				b := page.Boxes[j]
+				// If the box can never fit on a page, place it at top and stop moving it
+				if b.GetHeight() > availablePageHeight {
+					if b.GetY() > p.Margins.Top+0.01 {
+						b.SetPosition(b.GetX(), p.Margins.Top)
+						movedAny = true
+					}
+					j++
+					continue
+				}
+				if b.GetY()+b.GetHeight() > bottomThreshold {
+					// Remove from current page, and also remove any of its subtree boxes that may have been added separately
+					subtree := make(map[string]struct{})
+					gatherNodeKeys(b, subtree)
+					// First remove b at index j
+					page.Boxes = append(page.Boxes[:j], page.Boxes[j+1:]...)
+					// Then filter out any other boxes on this source page that belong to the same subtree
+					filtered := page.Boxes[:0]
+					for _, pb := range page.Boxes {
+						keep := true
+						if n := pb.GetNode(); n != nil {
+							if _, exists := subtree[fmt.Sprintf("%p", n)]; exists {
+								keep = false
+							}
+						}
+						if keep {
+							filtered = append(filtered, pb)
+						}
+					}
+					page.Boxes = filtered
+					// Reset j to re-check current index after filtering
+					j = 0
+					// Find a destination page where it fits without pushing others
+					dst := i + 1
+					tries := 0
+					for {
+						if dst >= len(pages) {
+							pages = append(pages, &Page{Width: p.PageSize.Width, Height: p.PageSize.Height, Boxes: make([]layout.Box, 0)})
+						}
+						nextPage := pages[dst]
+						// Compute the current bottom of content on the destination page
+						y := p.Margins.Top
+						if len(nextPage.Boxes) > 0 {
+							maxBottom := p.Margins.Top
+							for _, nb := range nextPage.Boxes {
+								if nb.GetY()+nb.GetHeight() > maxBottom {
+									maxBottom = nb.GetY() + nb.GetHeight()
+								}
+							}
+							y = maxBottom
+						}
+						// If it doesn't fit on this page, try the following one
+						if y+b.GetHeight() > p.PageSize.Height-p.Margins.Bottom {
+							dst++
+							tries++
+							if tries > 1000 {
+								// Safety guard: place at top of current dst and break
+								y = p.Margins.Top
+								b.SetPosition(b.GetX(), y)
+								pages[dst].Boxes = append(pages[dst].Boxes, b)
+								movedAny = true
+								break
+							}
+							continue
+						}
+						// Place on destination page at computed Y (no shifting of existing boxes)
+						b.SetPosition(b.GetX(), y)
+						nextPage.Boxes = append(nextPage.Boxes, b)
+						movedAny = true
+						break
+					}
+					continue // do not advance j since we removed the element at j
+				}
+				j++
+			}
+			// Keep boxes sorted vertically for stability
+			if len(page.Boxes) > 1 {
+				sort.Slice(page.Boxes, func(a, b int) bool {
+					ya := page.Boxes[a].GetY()
+					yb := page.Boxes[b].GetY()
+					if math.Abs(ya-yb) < 1.0 {
+						return page.Boxes[a].GetX() < page.Boxes[b].GetX()
+					}
+					return ya < yb
+				})
+			}
+		}
+		if !movedAny {
+			break
+		}
+	}
+	return pages
 }
 
 // isHeader determines if a box is a header element
