@@ -559,18 +559,21 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 			childY = last.GetY() + last.GetHeight()
 		}
 
-		// Create the inline box for text
+		lineHeight := 1.25 * fontSize
+		if lhProp, ok := effectiveStyle["line-height"]; ok && strings.TrimSpace(lhProp.Value) != "" {
+			lineHeight = parseLength(lhProp.Value, 0, lineHeight)
+		}
+
 		inlineBox := &InlineBox{
 			Node:   node,
 			Style:  effectiveStyle, // Use merged effective style (captures strong/em)
 			X:      parentBox.X,
 			Y:      childY,
 			Width:  parentBox.Width,
-			Height: fontSize * 1.4, // add leading to avoid clipping descenders
+			Height: lineHeight, // add leading to avoid clipping descenders
 			Text:   strings.TrimSpace(node.Data),
 		}
 
-		// Add this inline box to parent
 		parentBox.Children = append(parentBox.Children, inlineBox)
 
 		if e.Debug {

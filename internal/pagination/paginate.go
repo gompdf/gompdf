@@ -16,6 +16,32 @@ type Page struct {
 	Boxes  []layout.Box
 }
 
+// shiftSubtree shifts all descendants of a box by (dx, dy).
+// It preserves the relative structure while updating absolute positions.
+func shiftSubtree(b layout.Box, dx, dy float64) {
+	if dx == 0 && dy == 0 || b == nil {
+		return
+	}
+	switch bb := b.(type) {
+	case *layout.BlockBox:
+		for _, ch := range bb.Children {
+			if ch == nil {
+				continue
+			}
+			ch.SetPosition(ch.GetX()+dx, ch.GetY()+dy)
+			shiftSubtree(ch, dx, dy)
+		}
+	case *layout.InlineBox:
+		for _, ch := range bb.Children {
+			if ch == nil {
+				continue
+			}
+			ch.SetPosition(ch.GetX()+dx, ch.GetY()+dy)
+			shiftSubtree(ch, dx, dy)
+		}
+	}
+}
+
 // PageSize represents standard page sizes
 type PageSize struct {
 	Width  float64
@@ -230,12 +256,6 @@ func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tab
 		}
 	}
 
-	for _, box := range contentBoxes {
-		if addedBoxes[box] {
-			continue
-		}
-	}
-
 	for pageIndex, boxes := range pageBoxes {
 		// Ensure we have enough pages to cover referenced indices
 		for pageIndex >= len(pages) {
@@ -314,7 +334,9 @@ func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tab
 				if newY < margins.Top {
 					newY = margins.Top
 				}
+				oldX, oldY := clonedBox.GetX(), clonedBox.GetY()
 				clonedBox.SetPosition(clonedBox.GetX(), newY)
+				shiftSubtree(clonedBox, clonedBox.GetX()-oldX, newY-oldY)
 			} else {
 				// pageIndex == 0
 				normalizedY := margins.Top + (box.GetY() - firstPageMinY)
@@ -332,7 +354,9 @@ func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tab
 							Boxes:  make([]layout.Box, 0),
 						})
 					}
+					oldX, oldY := clonedBox.GetX(), clonedBox.GetY()
 					clonedBox.SetPosition(clonedBox.GetX(), margins.Top)
+					shiftSubtree(clonedBox, clonedBox.GetX()-oldX, margins.Top-oldY)
 					// Also remove any boxes already added to page 0 that belong to this box's subtree
 					if len(pages[0].Boxes) > 0 {
 						subtree := make(map[string]struct{})
@@ -353,7 +377,9 @@ func distributeContentToPages(pages []*Page, pageBoxes map[int][]layout.Box, tab
 					}
 				} else {
 					// Keep on first page at normalized position respecting top margin
+					oldX, oldY := clonedBox.GetX(), clonedBox.GetY()
 					clonedBox.SetPosition(clonedBox.GetX(), normalizedY)
+					shiftSubtree(clonedBox, clonedBox.GetX()-oldX, normalizedY-oldY)
 				}
 			}
 
@@ -500,6 +526,26 @@ func (p *Paginator) reflowByBottomThreshold(pages []*Page) []*Page {
 			}
 		}
 	}
+
+	// Helper to shift subtree of a box by given offset
+	var shiftSubtree func(layout.Box, float64, float64)
+	shiftSubtree = func(x layout.Box, dx, dy float64) {
+		if x == nil {
+			return
+		}
+		x.SetPosition(x.GetX()+dx, x.GetY()+dy)
+		switch bb := x.(type) {
+		case *layout.BlockBox:
+			for _, ch := range bb.Children {
+				shiftSubtree(ch, dx, dy)
+			}
+		case *layout.InlineBox:
+			for _, ch := range bb.Children {
+				shiftSubtree(ch, dx, dy)
+			}
+		}
+	}
+
 	maxIterations := 50
 	for iter := 0; iter < maxIterations; iter++ {
 		movedAny := false
@@ -511,7 +557,9 @@ func (p *Paginator) reflowByBottomThreshold(pages []*Page) []*Page {
 				// If the box can never fit on a page, place it at top and stop moving it
 				if b.GetHeight() > availablePageHeight {
 					if b.GetY() > p.Margins.Top+0.01 {
+						oldY := b.GetY()
 						b.SetPosition(b.GetX(), p.Margins.Top)
+						shiftSubtree(b, 0, p.Margins.Top-oldY)
 						movedAny = true
 					}
 					j++
@@ -566,6 +614,7 @@ func (p *Paginator) reflowByBottomThreshold(pages []*Page) []*Page {
 								// Safety guard: place at top of current dst and break
 								y = p.Margins.Top
 								b.SetPosition(b.GetX(), y)
+								shiftSubtree(b, 0, y-b.GetY())
 								pages[dst].Boxes = append(pages[dst].Boxes, b)
 								movedAny = true
 								break
@@ -573,7 +622,9 @@ func (p *Paginator) reflowByBottomThreshold(pages []*Page) []*Page {
 							continue
 						}
 						// Place on destination page at computed Y (no shifting of existing boxes)
+						oldY := b.GetY()
 						b.SetPosition(b.GetX(), y)
+						shiftSubtree(b, 0, y-oldY)
 						nextPage.Boxes = append(nextPage.Boxes, b)
 						movedAny = true
 						break

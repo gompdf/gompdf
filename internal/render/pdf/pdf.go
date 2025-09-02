@@ -119,13 +119,7 @@ func (r *Renderer) Render(pages []*pagination.Page, outputPath string, options R
 			fmt.Printf("Skipping empty page %d (no meaningful content)\n", i)
 			continue
 		}
-
-		fmt.Printf("Page %d: Width=%.2f, Height=%.2f, Boxes=%d\n", i, page.Width, page.Height, len(page.Boxes))
-		// Use the global orientation setting instead of determining per page
-		pdf.AddPageFormat(orient, fpdf.SizeType{
-			Wd: page.Width,
-			Ht: page.Height,
-		})
+		pdf.AddPage()
 
 		for _, box := range page.Boxes {
 			// Skip rendering boxes with no content
@@ -364,9 +358,9 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 	}
 
 	// Generate a unique ID for this text box to avoid duplicate rendering
-	// Include more position details to better detect duplicates
-	textID := fmt.Sprintf("%s-%.2f-%.2f-%.2f-%.2f",
-		box.Text, box.X, box.Y, box.Width, box.Height)
+	// Include position, size, and the box pointer to prevent false positives
+	textID := fmt.Sprintf("%s-%.2f-%.2f-%.2f-%.2f-%p",
+		box.Text, box.X, box.Y, box.Width, box.Height, box)
 
 	// Check if we've already rendered this text
 	if r.renderedTexts[textID] {
@@ -468,22 +462,68 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 		startX = box.X + box.Width
 	}
 
+    // Compute baseline Y. Inline tokens produced by layoutParagraphInline() have Node == nil
+    // and their Y was set to (baseline - fontSize), so baseline is simply Y + fontSize.
+    var baselineY float64
+    if box.Node == nil {
+        baselineY = box.Y + fontSize
+    } else {
+        // For standalone inline boxes with real nodes, derive baseline using ascent/descent and half-leading.
+        paddingTop := box.PaddingTop
+        paddingBottom := box.PaddingBottom
+        borderTop := box.BorderTop
+        borderBottom := box.BorderBottom
+        contentHeight := box.Height - paddingTop - paddingBottom - borderTop - borderBottom
+        if contentHeight < 0 {
+            contentHeight = 0
+        }
+        // Approximate ascent/descent
+        ascent := 0.80 * fontSize
+        descent := 0.20 * fontSize
+        if ascent+descent > contentHeight {
+            // Clamp if line-height is smaller than font bounds
+            scale := contentHeight / (ascent + descent)
+            if scale < 0 {
+                scale = 0
+            }
+            ascent *= scale
+            descent *= scale
+        }
+        leading := contentHeight - (ascent + descent)
+        if leading < 0 {
+            leading = 0
+        }
+        baselineOffset := ascent + (leading / 2.0)
+        baselineY = box.Y + borderTop + paddingTop + baselineOffset
+    }
+
 	if r.Debug {
 		fmt.Printf("Rendering text: '%s' at (%.2f, %.2f) with font %s %.0fpt, color: %v\n",
-			text, startX, box.Y+fontSize, fontFamily, fontSize, textColor)
+			text, startX, baselineY, fontFamily, fontSize, textColor)
 	}
 
-	pdf.Text(startX, box.Y+fontSize, text)
+	pdf.Text(startX, baselineY, text)
 
 	if r.DebugDrawBoxes {
 		pdf.SetDrawColor(255, 0, 0)
 		pdf.SetLineWidth(0.1)
 
-		x, y := startX, box.Y+fontSize
+		x, y := startX, baselineY
+		// Crosshair at baseline position
 		pdf.Line(x-2, y, x+2, y)
 		pdf.Line(x, y-2, x, y+2)
 
+		// Approximate text box around the rendered text
 		pdf.Rect(x, y-fontSize*0.8, textWidth, fontSize*1.2, "D")
+
+		// Additional guides: baseline and bottom of line box
+		// Baseline guide
+		pdf.SetDrawColor(0, 180, 0)
+		pdf.Line(box.X, baselineY, box.X+box.Width, baselineY)
+		// Bottom of line box guide
+		bottomY := box.Y + box.Height
+		pdf.SetDrawColor(0, 0, 180)
+		pdf.Line(box.X, bottomY, box.X+box.Width, bottomY)
 	}
 
 	if r.DebugDrawBoxes {
