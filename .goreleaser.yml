@@ -47,7 +47,7 @@ snapshot:
 
 release:
   github:
-    owner: henrrius
+    owner: gompdf
     name: gompdf
   draft: false
   prerelease: auto
