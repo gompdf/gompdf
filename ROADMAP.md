@@ -216,3 +216,11 @@ Legend: ✅ supported in target, ⚠️ partial/limited, ⏩ planned (version), 
 2. Open **milestone `v0.1`** with issues: parsers, cascade, block/inline layout, typography, pagination, PDF backend, testkit, CLI.
 3. Create **project board** with Phase A columns; seed 20 real‑world templates (invoice/report/table) for goldens.
 4. Enforce DCO + branch protection; set up CI (fmt/lint/test/vuln) and Dependabot.
+
+5. UTF‑8 / Unicode font support (proper fix)
+   - Embed a permissive default Unicode TTF (e.g., DejaVu Sans or Noto Sans) as the engine’s fallback family so UTF‑8 text (like • U+2022) renders correctly without user setup.
+   - Register fonts via gofpdf’s UTF‑8 APIs and use the same family for both measurement and painting to keep layout consistent.
+   - Map CSS `font-family`/`font-weight`/`font-style` to available faces (regular/bold/italic/bold‑italic), with fallback chaining to the default Unicode family, then core fonts as last resort.
+   - Support user fonts through `@font-face` and `Options.FontDirectories`; load TTF/OTF (WOFF/WOFF2 in later phase) and embed subsets with ToUnicode maps.
+   - Tests: golden fixtures covering bullets, accented characters, Cyrillic/Greek; assert `measureTextWidth` ≈ PDF width and visual correctness.
+   - Docs/examples: show how to configure custom fonts and verify UTF‑8 output; update minimal example to demonstrate a bullet • and a non‑Latin sample.

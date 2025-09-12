@@ -871,20 +871,59 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 		}
 
 		if isBlock {
-			childY := parentBox.Y
+			// Parse margins and padding from the element style (supports shorthand)
+			ml, mr, mt, mb := 0.0, 0.0, 0.0, 0.0
+			if m, ok := nodeStyle["margin"]; ok && strings.TrimSpace(m.Value) != "" {
+				t, r, btm, l := parseBoxShorthand(m.Value, parentBox.Width, 0)
+				mt, mr, mb, ml = t, r, btm, l
+			} else {
+				ml = parseLength(nodeStyle["margin-left"].Value, parentBox.Width, 0)
+				mr = parseLength(nodeStyle["margin-right"].Value, parentBox.Width, 0)
+				mt = parseLength(nodeStyle["margin-top"].Value, parentBox.Width, 0)
+				mb = parseLength(nodeStyle["margin-bottom"].Value, parentBox.Width, 0)
+			}
+			pl, pr, pt, pb := 0.0, 0.0, 0.0, 0.0
+			if p, ok := nodeStyle["padding"]; ok && strings.TrimSpace(p.Value) != "" {
+				t, r, btm, l := parseBoxShorthand(p.Value, parentBox.Width, 0)
+				pt, pr, pb, pl = t, r, btm, l
+			} else {
+				pl = parseLength(nodeStyle["padding-left"].Value, parentBox.Width, 0)
+				pr = parseLength(nodeStyle["padding-right"].Value, parentBox.Width, 0)
+				pt = parseLength(nodeStyle["padding-top"].Value, parentBox.Width, 0)
+				pb = parseLength(nodeStyle["padding-bottom"].Value, parentBox.Width, 0)
+			}
+
+			// Parent content box
+			parentContentX := parentBox.X + parentBox.PaddingLeft + parentBox.BorderLeft
+			parentContentY := parentBox.Y + parentBox.PaddingTop + parentBox.BorderTop
+			parentContentW := parentBox.Width - parentBox.PaddingLeft - parentBox.PaddingRight - parentBox.BorderLeft - parentBox.BorderRight
+			if parentContentW < 0 { parentContentW = 0 }
+
+			// Compute Y considering previous sibling bottom margin and our top margin
+			childY := parentContentY
 			if len(parentBox.Children) > 0 {
 				last := parentBox.Children[len(parentBox.Children)-1]
-				childY = last.GetY() + last.GetHeight()
+				childY = last.GetY() + last.GetHeight() + last.GetMarginBottom()
 			}
+			childY += mt
+
+			// Compute X and width considering our margins
+			childX := parentContentX + ml
+			childW := parentContentW - ml - mr
+			if childW < 0 { childW = 0 }
+
 			blockBox := &BlockBox{
 				Node:     node,
 				Style:    nodeStyle,
-				X:        parentBox.X,
+				X:        childX,
 				Y:        childY,
-				Width:    parentBox.Width,
+				Width:    childW,
 				Height:   30, // Default height, will be adjusted later
 				Children: []Box{},
 			}
+			// Store parsed margins/padding so renderers/layout can reference them
+			blockBox.MarginLeft, blockBox.MarginRight, blockBox.MarginTop, blockBox.MarginBottom = ml, mr, mt, mb
+			blockBox.PaddingLeft, blockBox.PaddingRight, blockBox.PaddingTop, blockBox.PaddingBottom = pl, pr, pt, pb
 
 			parentBox.Children = append(parentBox.Children, blockBox)
 			childContainer = blockBox

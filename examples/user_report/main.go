@@ -133,7 +133,7 @@ func main() {
 	options := gompdf.DefaultOptions()
 	options.PageWidth = gompdf.PageSizeLetterWidth
 	options.PageHeight = gompdf.PageSizeLetterHeight
-	options.PageOrientation = gompdf.PageOrientationPortrait
+	options.PageOrientation = gompdf.PageOrientationLandscape
 	options.MarginTop = 36
 	options.MarginBottom = 36
 	options.MarginLeft = 36

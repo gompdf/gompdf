@@ -17,12 +17,13 @@ func main() {
 
 	opts := gompdf.DefaultOptions()
 	// Example: set Letter portrait with 0.5in margins
-	opts.PageWidth = gompdf.PageSizeLetterWidth
-	opts.PageHeight = gompdf.PageSizeLetterHeight
-	opts.MarginTop = 36
-	opts.MarginRight = 36
-	opts.MarginBottom = 36
-	opts.MarginLeft = 36
+	opts.PageWidth = gompdf.PageSizeA4Width
+	opts.PageHeight = gompdf.PageSizeA4Height
+	opts.PageOrientation = gompdf.PageOrientationLandscape
+	opts.MarginTop = 18
+	opts.MarginRight = 18
+	opts.MarginBottom = 18
+	opts.MarginLeft = 18
 
 	conv := gompdf.NewWithOptions(opts)
 	if err := conv.ConvertURL(*inputURL, *outputPDF); err != nil {
