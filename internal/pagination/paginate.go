@@ -39,6 +39,8 @@ func shiftSubtree(b layout.Box, dx, dy float64) {
 			ch.SetPosition(ch.GetX()+dx, ch.GetY()+dy)
 			shiftSubtree(ch, dx, dy)
 		}
+	case *layout.ImageBox:
+		// ImageBox has no children; nothing further to shift
 	}
 }
 
@@ -414,6 +416,8 @@ func collectBoxes(container layout.Box, boxes *[]layout.Box) {
 		for _, child := range b.Children {
 			collectBoxes(child, boxes)
 		}
+	case *layout.ImageBox:
+		// No children to collect
 	}
 }
 
@@ -486,6 +490,29 @@ func cloneBox(box layout.Box) layout.Box {
 		}
 
 		return clone
+	case *layout.ImageBox:
+		clone := &layout.ImageBox{
+			Node:          b.Node,
+			Style:         b.Style,
+			X:             b.X,
+			Y:             b.Y,
+			Width:         b.Width,
+			Height:        b.Height,
+			MarginTop:     b.MarginTop,
+			MarginRight:   b.MarginRight,
+			MarginBottom:  b.MarginBottom,
+			MarginLeft:    b.MarginLeft,
+			PaddingTop:    b.PaddingTop,
+			PaddingRight:  b.PaddingRight,
+			PaddingBottom: b.PaddingBottom,
+			PaddingLeft:   b.PaddingLeft,
+			BorderTop:     b.BorderTop,
+			BorderRight:   b.BorderRight,
+			BorderBottom:  b.BorderBottom,
+			BorderLeft:    b.BorderLeft,
+			Src:           b.Src,
+		}
+		return clone
 	}
 
 	// Default case - should not happen with proper box types
@@ -543,6 +570,8 @@ func (p *Paginator) reflowByBottomThreshold(pages []*Page) []*Page {
 			for _, ch := range bb.Children {
 				shiftSubtree(ch, dx, dy)
 			}
+		case *layout.ImageBox:
+			// no children
 		}
 	}
 

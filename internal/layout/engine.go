@@ -2,6 +2,7 @@ package layout
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"unicode"
@@ -107,8 +108,50 @@ func (e *Engine) layoutTableRow(row *BlockBox) {
 	}
 
 	totalWidth := row.Width
+	// Determine horizontal gap between cells. Prefer explicit border-spacing from the nearest table ancestor
+	// or the row itself. If not set, try 'gap' or 'column-gap'. If nothing set, default to 0.
+	cellGapX := 0.0
+	// Helper to extract spacing from a style map
+	extractGap := func(st style.ComputedStyle) (float64, bool) {
+		if st == nil {
+			return 0, false
+		}
+		if bs, ok := st["border-spacing"]; ok && strings.TrimSpace(bs.Value) != "" {
+			parts := strings.Fields(bs.Value)
+			if len(parts) > 0 {
+				return parseLength(parts[0], row.Width, 0), true
+			}
+		}
+		if g, ok := st["gap"]; ok && strings.TrimSpace(g.Value) != "" {
+			return parseLength(g.Value, row.Width, 0), true
+		}
+		if cg, ok := st["column-gap"]; ok && strings.TrimSpace(cg.Value) != "" {
+			return parseLength(cg.Value, row.Width, 0), true
+		}
+		return 0, false
+	}
+	// 1) Check the row's own style
+	if v, ok := extractGap(row.Style); ok {
+		cellGapX = v
+	} else if row != nil && row.Node != nil {
+		// 2) Walk up to find the nearest table's style
+		findTable := row.Node.Parent
+		for findTable != nil && !strings.EqualFold(findTable.Data, "table") {
+			findTable = findTable.Parent
+		}
+		if findTable != nil {
+			if st, ok := e.styles[findTable]; ok {
+				if v, ok2 := extractGap(st); ok2 {
+					cellGapX = v
+				}
+			}
+		}
+	}
+	if cellGapX < 0 { cellGapX = 0 }
+	// Account for gaps between N cells -> (N-1) gaps
+	effectiveWidth := totalWidth - cellGapX*math.Max(0, float64(len(cells)-1))
 	widths := make([]float64, len(cells))
-	remaining := totalWidth
+	remaining := effectiveWidth
 	remainingCount := len(cells)
 
 	// First pass: honor explicit width on cells if present
@@ -176,7 +219,11 @@ func (e *Engine) layoutTableRow(row *BlockBox) {
 		if cell.Height > maxH {
 			maxH = cell.Height
 		}
+		// Advance by width plus gap (no trailing gap after last cell)
 		x += widths[i]
+		if i < len(cells)-1 {
+			x += cellGapX
+		}
 	}
 	if maxH < 20 {
 		maxH = 20
@@ -592,7 +639,8 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 			return
 		}
 
-		isBlock := e.isBlockTag(strings.ToLower(node.Data))
+		tagName := strings.ToLower(node.Data)
+		isBlock := e.isBlockTag(tagName)
 
 		var nodeStyle style.ComputedStyle // Default empty style
 
@@ -624,6 +672,54 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 		}
 
 		childContainer := parentBox
+
+		// Special-case inline replaced element: <img>
+		if tagName == "img" {
+			// Determine merged style for the element
+			nodeStyle := style.ComputedStyle{}
+			parentStyle := style.ComputedStyle{}
+			if parentBox != nil && parentBox.GetNode() != nil {
+				if ps, ok := e.styles[parentBox.GetNode()]; ok {
+					parentStyle = ps
+				}
+			}
+			if thisNodeStyle, ok := e.styles[node]; ok {
+				nodeStyle = e.mergeStyles(parentStyle, thisNodeStyle)
+			} else {
+				nodeStyle = parentStyle
+			}
+
+			// Position just like inline
+			childY := parentBox.Y
+			if len(parentBox.Children) > 0 {
+				last := parentBox.Children[len(parentBox.Children)-1]
+				childY = last.GetY() + last.GetHeight()
+			}
+
+			// Extract src attribute
+			src := ""
+			for _, a := range node.Attr {
+				if strings.EqualFold(a.Key, "src") {
+					src = a.Val
+					break
+				}
+			}
+
+			img := &ImageBox{
+				Node:  node,
+				Style: nodeStyle,
+				X:     parentBox.X,
+				Y:     childY,
+				Src:   src,
+			}
+			// Let the image compute its own size based on styles/defaults
+			img.Layout(parentBox)
+			parentBox.Children = append(parentBox.Children, img)
+			if e.Debug {
+				fmt.Printf("Created image box: src='%s' at x=%.2f y=%.2f w=%.2f h=%.2f\n", src, img.X, img.Y, img.Width, img.Height)
+			}
+			return
+		}
 
 		if isBlock {
 			childY := parentBox.Y
@@ -787,7 +883,8 @@ func (e *Engine) layoutParagraphInline(pNode *html.Node, container *BlockBox, ba
 			isSpace := isAllSpace(t)
 			w := 0.0
 			if isSpace {
-				w = fs * 0.25 // Standard space width as a fraction of font size
+				// Measure space width using font metrics to avoid over/under spacing
+				w = measureTextWidth(" ", fs, run.style)
 			} else {
 				t = strings.TrimSpace(t)
 				if t != "" {
@@ -840,10 +937,8 @@ func (e *Engine) layoutParagraphInline(pNode *html.Node, container *BlockBox, ba
 			if tk.drop {
 				continue
 			}
+			// Use the precomputed token width (font-aware for both words and spaces)
 			w := tk.width
-			if tk.isSpace {
-				w = tk.fs * 0.25 // Standard space width as a fraction of font size
-			}
 			ib := &InlineBox{
 				Node:   nil,
 				Style:  tk.style,
@@ -875,7 +970,8 @@ func (e *Engine) layoutParagraphInline(pNode *html.Node, container *BlockBox, ba
 			if r, _ := utf8.DecodeRuneInString(tk.text); r != utf8.RuneError && strings.ContainsRune(",.;:!?)]}»", r) {
 			} else {
 				fs, lh := tk.fs, tk.lh
-				spw := fs * 0.25 // Standard space width as a fraction of font size
+				// Use font-aware space width
+				spw := measureTextWidth(" ", fs, tk.style)
 				if lineWidth+spw+tk.width > maxWidth && len(line) > 0 {
 					emitLine()
 					pendingSpace = false

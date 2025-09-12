@@ -1,7 +1,11 @@
 package pdf
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,6 +14,9 @@ import (
 	"codeberg.org/go-pdf/fpdf"
 	"github.com/gompdf/gompdf/internal/layout"
 	"github.com/gompdf/gompdf/internal/pagination"
+	"github.com/gompdf/gompdf/internal/res"
+	"github.com/srwiley/oksvg"
+	"github.com/srwiley/rasterx"
 )
 
 // Renderer handles rendering to PDF
@@ -29,6 +36,91 @@ type Renderer struct {
 	listStack []listContext
 	// renderedTexts tracks which text boxes have been rendered to avoid duplicates
 	renderedTexts map[string]bool
+	// Loader allows resolving images and other resources
+	Loader *res.Loader
+}
+
+// resourceToPNG decodes a resource image (including SVG) and returns PNG bytes.
+// For SVG, it rasterizes to approximately the requested pixel size (w x h).
+func (r *Renderer) resourceToPNG(resrc *res.Resource, w, h int) ([]byte, error) {
+	if strings.EqualFold(strings.TrimSpace(resrc.MimeType), "image/svg+xml") {
+		// Rasterize SVG using oksvg
+		if w <= 0 { w = 100 }
+		if h <= 0 { h = 100 }
+		icon, err := oksvg.ReadIconStream(bytes.NewReader(resrc.Data))
+		if err != nil {
+			return nil, fmt.Errorf("svg parse: %w", err)
+		}
+		// Determine aspect ratio and scale target
+		vb := icon.ViewBox
+		tw, th := float64(w), float64(h)
+		if vb.W > 0 && vb.H > 0 {
+			// preserve aspect by fitting within w x h
+			sx := tw / vb.W
+			sy := th / vb.H
+			s := math.Min(sx, sy)
+			tw = vb.W * s
+			th = vb.H * s
+		}
+		rgba := image.NewRGBA(image.Rect(0, 0, int(math.Ceil(tw)), int(math.Ceil(th))))
+		scanner := rasterx.NewScannerGV(rgba.Bounds().Dx(), rgba.Bounds().Dy(), rgba, rgba.Bounds())
+		raster := rasterx.NewDasher(rgba.Bounds().Dx(), rgba.Bounds().Dy(), scanner)
+		icon.SetTarget(0, 0, float64(rgba.Bounds().Dx()), float64(rgba.Bounds().Dy()))
+		icon.Draw(raster, 1.0)
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, rgba); err != nil {
+			return nil, fmt.Errorf("svg encode png: %w", err)
+		}
+		return buf.Bytes(), nil
+	}
+	// Try to decode any raster image
+	img, _, err := image.Decode(bytes.NewReader(resrc.Data))
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// renderImageBox draws an image for an ImageBox using the configured Loader.
+func (r *Renderer) renderImageBox(pdf *fpdf.Fpdf, box *layout.ImageBox) {
+	if r.Loader == nil {
+		if r.Debug {
+			fmt.Printf("No loader set; cannot render image src=%q\n", box.Src)
+		}
+		return
+	}
+	if strings.TrimSpace(box.Src) == "" {
+		return
+	}
+	resrc, err := r.Loader.LoadImage(box.Src)
+	if err != nil {
+		if r.Debug {
+			fmt.Printf("Failed to load image %q: %v\n", box.Src, err)
+		}
+		return
+	}
+	// Convert to PNG bytes so fpdf can handle all formats consistently (including SVG via rasterization)
+	pngBytes, err := r.resourceToPNG(resrc, int(math.Ceil(box.Width)), int(math.Ceil(box.Height)))
+	if err != nil {
+		if r.Debug {
+			fmt.Printf("Failed to convert image %q to PNG: %v\n", box.Src, err)
+		}
+		return
+	}
+	name := fmt.Sprintf("img-%p", box)
+	opt := fpdf.ImageOptions{ImageType: "PNG", ReadDpi: true}
+	pdf.RegisterImageOptionsReader(name, opt, bytes.NewReader(pngBytes))
+	// Place image at top-left of box with specified width/height
+	pdf.ImageOptions(name, box.X, box.Y, box.Width, box.Height, false, opt, 0, "")
+
+	if r.DebugDrawBoxes {
+		pdf.SetDrawColor(0, 150, 0)
+		pdf.Rect(box.X, box.Y, box.Width, box.Height, "D")
+	}
 }
 
 // listContext represents an active list (ul/ol) while rendering
@@ -50,7 +142,7 @@ type RenderOptions struct {
 }
 
 // NewRenderer creates a new PDF renderer
-func NewRenderer() *Renderer {
+func NewRenderer(loader *res.Loader) *Renderer {
 	return &Renderer{
 		FontDirs:          []string{},
 		DPI:               96,
@@ -59,6 +151,7 @@ func NewRenderer() *Renderer {
 		RenderBorders:     true,
 		DebugDrawBoxes:    false,
 		renderedTexts:     make(map[string]bool),
+		Loader:            loader,
 	}
 }
 
@@ -148,12 +241,13 @@ func (r *Renderer) registerFonts(pdf *fpdf.Fpdf) {
 
 // renderBox renders a box to the PDF
 func (r *Renderer) renderBox(pdf *fpdf.Fpdf, box layout.Box) {
-
 	switch b := box.(type) {
 	case *layout.BlockBox:
 		r.renderBlockBox(pdf, b)
 	case *layout.InlineBox:
 		r.renderInlineBox(pdf, b)
+	case *layout.ImageBox:
+		r.renderImageBox(pdf, b)
 	default:
 		if r.Debug {
 			fmt.Printf("Unknown box type: %T\n", box)
@@ -376,7 +470,8 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 
 	fontSize := 12.0
 	if fontSizeProp, exists := box.Style["font-size"]; exists {
-		fontSize = parseFloat(fontSizeProp.Value, 12)
+		// Accept CSS values like "16px" or raw numbers
+		fontSize = parseCSSFloat(fontSizeProp.Value, 12)
 		if r.Debug {
 			fmt.Printf("Using font size: %.1f\n", fontSize)
 		}
@@ -535,12 +630,27 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 
 // parseFloat parses a float value with a default
 func parseFloat(value string, defaultValue float64) float64 {
-	var result float64
-	_, err := fmt.Sscanf(value, "%f", &result)
-	if err != nil {
-		return defaultValue
-	}
-	return result
+    var result float64
+    _, err := fmt.Sscanf(value, "%f", &result)
+    if err != nil {
+        return defaultValue
+    }
+    return result
+}
+
+// parseCSSFloat parses a numeric CSS value like "16px" or "12" into a float.
+// Only simple units are supported here (px, pt); defaults if parsing fails.
+func parseCSSFloat(value string, defaultValue float64) float64 {
+    v := strings.TrimSpace(value)
+    if strings.HasSuffix(v, "px") {
+        v = strings.TrimSuffix(v, "px")
+    } else if strings.HasSuffix(v, "pt") {
+        v = strings.TrimSuffix(v, "pt")
+    }
+    if f, err := strconv.ParseFloat(v, 64); err == nil {
+        return f
+    }
+    return defaultValue
 }
 
 // parseColor parses a CSS color value

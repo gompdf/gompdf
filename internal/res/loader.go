@@ -2,6 +2,7 @@ package res
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -78,6 +79,18 @@ func (l *Loader) Load(urlStr string) (*Resource, error) {
 	}
 	l.cacheLock.RUnlock()
 
+	// Handle data URLs directly
+	if strings.HasPrefix(urlStr, "data:") {
+		res, err := parseDataURL(urlStr)
+		if err != nil {
+			return nil, err
+		}
+		l.cacheLock.Lock()
+		l.cache[urlStr] = res
+		l.cacheLock.Unlock()
+		return res, nil
+	}
+
 	resolvedURL, err := l.resolveURL(urlStr)
 	if err != nil {
 		return nil, err
@@ -99,6 +112,62 @@ func (l *Loader) Load(urlStr string) (*Resource, error) {
 	l.cacheLock.Unlock()
 
 	return res, nil
+}
+
+// parseDataURL parses a data URL (RFC 2397) and returns a Resource.
+// Examples:
+//   data:image/png;base64,<base64>
+//   data:text/plain,Hello%20World
+func parseDataURL(u string) (*Resource, error) {
+	// Strip prefix
+	if !strings.HasPrefix(u, "data:") {
+		return nil, fmt.Errorf("not a data URL")
+	}
+	s := strings.TrimPrefix(u, "data:")
+	// Split metadata and data
+	parts := strings.SplitN(s, ",", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid data URL")
+	}
+	meta := parts[0]
+	dataPart := parts[1]
+
+	mime := "application/octet-stream"
+	isBase64 := false
+	if meta == "" {
+		// defaults
+	} else {
+		// meta can be like: image/png;base64 or text/plain;charset=utf-8
+		comps := strings.Split(meta, ";")
+		if len(comps) > 0 && comps[0] != "" {
+			mime = comps[0]
+		}
+		for _, c := range comps[1:] {
+			if strings.EqualFold(strings.TrimSpace(c), "base64") {
+				isBase64 = true
+			}
+		}
+	}
+
+	var data []byte
+	var err error
+	if isBase64 {
+		data, err = base64.StdEncoding.DecodeString(dataPart)
+		if err != nil {
+			return nil, fmt.Errorf("invalid base64 data URL: %w", err)
+		}
+	} else {
+		// The non-base64 form is URL-escaped
+		if d, derr := url.QueryUnescape(dataPart); derr == nil {
+			data = []byte(d)
+		} else {
+			data = []byte(dataPart)
+		}
+	}
+
+	r := &Resource{URL: u, Data: data, MimeType: mime}
+	r.Type = determineResourceType(mime, "")
+	return r, nil
 }
 
 // resolveURL resolves a URL relative to the base URL
@@ -229,6 +298,14 @@ func determineMimeType(path string) string {
 		return "image/png"
 	case ".gif":
 		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".tiff", ".tif":
+		return "image/tiff"
+	case ".bmp":
+		return "image/bmp"
+	case ".ico":
+		return "image/x-icon"
 	case ".svg":
 		return "image/svg+xml"
 	case ".ttf":
@@ -265,7 +342,7 @@ func determineResourceType(mimeType, path string) ResourceType {
 	ext := strings.ToLower(filepath.Ext(path))
 
 	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".svg":
+	case ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".tiff", ".tif", ".bmp", ".ico":
 		return ResourceTypeImage
 	case ".ttf", ".otf", ".woff", ".woff2":
 		return ResourceTypeFont

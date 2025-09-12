@@ -145,7 +145,7 @@ func (c *Converter) ConvertToFile(htmlContent, outputPath string) error {
 	})
 	pages := paginationEngine.Paginate(rootBox)
 
-	renderer := pdf.NewRenderer()
+	renderer := pdf.NewRenderer(c.loader)
 	renderer.DPI = c.options.DPI
 	renderer.Debug = c.options.Debug
 	renderer.RenderBackgrounds = c.options.RenderBackgrounds

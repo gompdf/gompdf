@@ -15,12 +15,12 @@ This example demonstrates how to generate a multi-page PDF report with Tailwind-
 1. The example generates sample user data with randomized names, emails, and activity statistics
 2. An HTML template is rendered with this data using Go's template package
 3. The HTML is converted to PDF using the gompdf library
-4. The PDF is saved to disk with proper A4 page size and margins
+4. The PDF is saved to disk with proper US Letter page size and 36pt (0.5in) margins
 
 ## Running the Example
 
 ```bash
-cd examples/tailwind-report
+cd examples/user_report
 go run main.go
 ```
 
@@ -38,7 +38,7 @@ This will generate two files:
 - The example uses inline CSS rather than external Tailwind CSS to ensure proper rendering
 - Table-based layouts are used for certain sections to ensure compatibility with PDF rendering
 - CSS variables provide a consistent color scheme throughout the document
-- The PDF is configured for A4 size with 15-point margins
+- The example configures US Letter size with 36-point (0.5in) margins
 
 ## Customization
 

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Invoice INV-2025-091</title>
+  <style>
+    :root { --ink:#111827; --muted:#6b7280; --border:#e5e7eb; --bg:#f9fafb; }
+    * { box-sizing: border-box; }
+    body { font-family: Helvetica, Arial, sans-serif; color: var(--ink); margin: 0; }
+    .container { padding: 32px; }
+    .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+    .h1 { font-size: 28px; margin: 0; }
+    .muted { color: var(--muted); }
+    .box { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: white; }
+    .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; } .mt-4 { margin-top: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { background: var(--bg); font-weight: 600; }
+    tfoot td { border-top: 2px solid var(--border); }
+    .right { text-align: right; }
+    pre { margin: 0; white-space: pre-wrap; }
+     
+    p { text-align: left; word-spacing: normal; letter-spacing: normal; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row">
+      <div>
+        <h1 class="h1">Invoice</h1>
+        <div class="muted">No. INV-2025-091</div>
+      </div>
+      <div>
+        <div><strong>Issue date:</strong> 2025-09-12</div>
+        <div><strong>Due date:</strong> 2025-09-26</div>
+      </div>
+    </div>
+
+    <div class="row mt-4">
+      <div class="box" style="flex:1">
+        <div><strong>Bill to</strong></div>
+        <div class="mt-2">Acme, Inc.</div>
+        <pre class="muted mt-2">123 Market Street
+San Francisco, CA 94107</pre>
+      </div>
+      <div style="flex:1"></div>
+    </div>
+
+    <div class="mt-4">
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="right">Qty</th>
+            <th class="right">Unit price</th>
+            <th class="right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr>
+            <td>Consulting services</td>
+            <td class="right">12</td>
+            <td class="right">150.00</td>
+            <td class="right">1800.00</td>
+          </tr>
+          
+          <tr>
+            <td>Design review</td>
+            <td class="right">4</td>
+            <td class="right">120.00</td>
+            <td class="right">480.00</td>
+          </tr>
+          
+          <tr>
+            <td>Support &amp; maintenance</td>
+            <td class="right">6</td>
+            <td class="right">90.00</td>
+            <td class="right">540.00</td>
+          </tr>
+          
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" class="right"><strong>Subtotal</strong></td>
+            <td class="right">2820.00</td>
+          </tr>
+          <tr>
+            <td colspan="3" class="right"><strong>Tax (7%)</strong></td>
+            <td class="right">197.40</td>
+          </tr>
+          <tr>
+            <td colspan="3" class="right"><strong>Total</strong></td>
+            <td class="right"><strong>3017.40</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <p class="muted mt-4">Thank you for your business!</p>
+  </div>
+</body>
+</html>

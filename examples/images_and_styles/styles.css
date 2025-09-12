@@ -1,0 +1,12 @@
+* { box-sizing: border-box; }
+:root { --ink:#111827; --muted:#6b7280; --border:#e5e7eb; --brand:#2563eb; --bg:#f9fafb; }
+body { margin: 0; font-family: Helvetica, Arial, sans-serif; color: var(--ink); background: white; }
+.header { display: flex; align-items: center; gap: 16px; padding: 24px 0; border-bottom: 1px solid var(--border); }
+.logo { width: 40px; height: 40px; }
+.title { margin: 0; font-size: 24px; }
+.subtitle { margin: 4px 0 0; color: var(--muted); }
+main { padding: 24px 0; }
+.card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: var(--bg); }
+.grid { display: flex; gap: 12px; margin-top: 16px; }
+.grid-item { flex: 1; padding: 16px; border: 1px solid var(--border); border-radius: 8px; text-align: center; }
+.footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
