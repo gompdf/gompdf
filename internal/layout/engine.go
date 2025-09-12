@@ -3,6 +3,7 @@ package layout
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -29,6 +30,140 @@ func SetMeasurementOrientation(o string) {
 	if o == "L" || o == "P" {
 		orientation = o
 	}
+}
+
+// computeTableColumnWidths determines consistent column widths for a table row.
+// It prefers widths declared on the first header row (<thead> > <tr>) if present.
+// Otherwise it uses the current row's cells. It honors percentage and px widths
+// and supports colspan by dividing the declared width evenly across spanned columns.
+func (e *Engine) computeTableColumnWidths(row *BlockBox, totalWidth, gap float64) ([]float64, int) {
+    if row == nil || row.Node == nil {
+        return nil, 0
+    }
+    // Find the ancestor <table>
+    t := row.Node.Parent
+    for t != nil && !strings.EqualFold(t.Data, "table") {
+        t = t.Parent
+    }
+    if t == nil {
+        // Not inside a table
+        cells := 0
+        for _, ch := range row.Children {
+            if bb, ok := ch.(*BlockBox); ok && bb.Node != nil {
+                tag := strings.ToLower(bb.Node.Data)
+                if tag == "td" || tag == "th" { cells++ }
+            }
+        }
+        if cells == 0 { return nil, 0 }
+        eff := totalWidth - gap*math.Max(0, float64(cells-1))
+        w := eff / float64(cells)
+        out := make([]float64, cells)
+        for i := range out { out[i] = w }
+        return out, cells
+    }
+
+    // Helper to scan a <tr> node's children for widths/colspans using computed styles
+    type colSpec struct{ width float64; span int; hasWidth bool }
+    scanTR := func(tr *html.Node) ([]colSpec, int) {
+        specs := []colSpec{}
+        colCount := 0
+        for c := tr.FirstChild; c != nil; c = c.NextSibling {
+            if c.Type != xhtml.ElementNode { continue }
+            tag := strings.ToLower(c.Data)
+            if tag != "th" && tag != "td" { continue }
+            span := 1
+            for _, a := range c.Attr {
+                if strings.EqualFold(a.Key, "colspan") {
+                    if n, err := strconv.Atoi(strings.TrimSpace(a.Val)); err == nil && n > 1 { span = n }
+                }
+            }
+            wv := 0.0
+            hasW := false
+            if st, ok := e.styles[c]; ok {
+                if wp, ok2 := st["width"]; ok2 && strings.TrimSpace(wp.Value) != "" {
+                    wv = parseLength(wp.Value, totalWidth, 0)
+                    if wv > 0 { hasW = true }
+                }
+            }
+            if !hasW {
+                for _, a := range c.Attr {
+                    if strings.EqualFold(a.Key, "width") {
+                        v := strings.TrimSpace(a.Val)
+                        // Support percentage or pixels
+                        if strings.HasSuffix(v, "%") || strings.HasSuffix(v, "px") {
+                            wv = parseLength(v, totalWidth, 0)
+                            if wv > 0 { hasW = true }
+                        } else if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+                            wv = f
+                            hasW = true
+                        }
+                    }
+                }
+            }
+            specs = append(specs, colSpec{width: wv, span: span, hasWidth: hasW})
+            colCount += span
+        }
+        return specs, colCount
+    }
+
+    // Prefer header row specs
+    var specs []colSpec
+    cols := 0
+    // Locate the first <tr> within <thead>
+    for n := t.FirstChild; n != nil && cols == 0; n = n.NextSibling {
+        if n.Type == xhtml.ElementNode && strings.EqualFold(n.Data, "thead") {
+            for tr := n.FirstChild; tr != nil && cols == 0; tr = tr.NextSibling {
+                if tr.Type == xhtml.ElementNode && strings.EqualFold(tr.Data, "tr") {
+                    specs, cols = scanTR(tr)
+                }
+            }
+        }
+    }
+    // If no thead widths, use current row
+    if cols == 0 {
+        specs, cols = scanTR(row.Node)
+    }
+    if cols == 0 {
+        return nil, 0
+    }
+
+    effective := totalWidth - gap*math.Max(0, float64(cols-1))
+    colWidths := make([]float64, cols)
+
+    // First, assign declared widths
+    idx := 0
+    totalDeclared := 0.0
+    undeclaredCols := 0
+    for _, s := range specs {
+        if s.hasWidth {
+            // divide width evenly across spanned columns
+            share := s.width / float64(s.span)
+            for j := 0; j < s.span && idx < cols; j++ {
+                colWidths[idx] = share
+                totalDeclared += share
+                idx++
+            }
+        } else {
+            for j := 0; j < s.span && idx < cols; j++ {
+                // mark as undeclared
+                undeclaredCols++
+                idx++
+            }
+        }
+    }
+
+    remaining := effective - totalDeclared
+    if remaining < 0 { remaining = 0 }
+    // Count how many zeros remain
+    zeroCount := 0
+    for i := 0; i < cols; i++ { if colWidths[i] == 0 { zeroCount++ } }
+    if zeroCount > 0 {
+        each := remaining / float64(zeroCount)
+        for i := 0; i < cols; i++ {
+            if colWidths[i] == 0 { colWidths[i] = each }
+        }
+    }
+    return colWidths, cols
 }
 
 func initMeasurePDF() {
@@ -148,83 +283,89 @@ func (e *Engine) layoutTableRow(row *BlockBox) {
 		}
 	}
 	if cellGapX < 0 { cellGapX = 0 }
-	// Account for gaps between N cells -> (N-1) gaps
-	effectiveWidth := totalWidth - cellGapX*math.Max(0, float64(len(cells)-1))
-	widths := make([]float64, len(cells))
-	remaining := effectiveWidth
-	remainingCount := len(cells)
+	// Build per-column widths for the table, respecting widths from a header row when present
+    colWidths, colCount := e.computeTableColumnWidths(row, totalWidth, cellGapX)
+    if colCount == 0 {
+        // Fallback: treat each cell as one column
+        colCount = len(cells)
+        effective := totalWidth - cellGapX*math.Max(0, float64(colCount-1))
+        w := 0.0
+        if colCount > 0 { w = effective / float64(colCount) }
+        colWidths = make([]float64, colCount)
+        for i := 0; i < colCount; i++ { colWidths[i] = w }
+    }
 
-	// First pass: honor explicit width on cells if present
-	for i, cell := range cells {
-		if prop, ok := cell.Style["width"]; ok && prop.Value != "" {
-			w := parseLength(prop.Value, totalWidth, 0)
-			if w > 0 {
-				widths[i] = w
-				remaining -= w
-				remainingCount--
-			}
-		}
-	}
+    // Column positions
+    colX := make([]float64, colCount)
+    cx := row.X
+    for i := 0; i < colCount; i++ {
+        colX[i] = cx
+        cx += colWidths[i]
+        if i < colCount-1 { cx += cellGapX }
+    }
 
-	if remainingCount > 0 {
-		each := remaining / float64(remainingCount)
-		if each < 0 {
-			each = 0
-		}
-		for i := range widths {
-			if widths[i] == 0 {
-				widths[i] = each
-			}
-		}
-	} else if remaining < 0 {
-		// Normalize proportionally if explicit widths exceed total
-		sum := 0.0
-		for _, w := range widths {
-			sum += w
-		}
-		if sum > 0 {
-			scale := totalWidth / sum
-			for i := range widths {
-				widths[i] *= scale
-			}
-		}
-	}
+    // Place cells using colspan
+    x := row.X
+    maxH := 0.0
+    colIdx := 0
+    for _, cell := range cells {
+        span := 1
+        if cell.Node != nil {
+            for _, a := range cell.Node.Attr {
+                if strings.EqualFold(a.Key, "colspan") {
+                    if n, err := strconv.Atoi(strings.TrimSpace(a.Val)); err == nil && n > 1 {
+                        span = n
+                    }
+                }
+            }
+        }
 
-	x := row.X
-	maxH := 0.0
-	for i, cell := range cells {
-		// Compute deltas for descendant shift
-		oldX, oldY := cell.X, cell.Y
-		newX, newY := x, row.Y
-		dx, dy := newX-oldX, newY-oldY
+        if colIdx >= len(colX) {
+            colIdx = len(colX) - 1
+        }
 
-		// Apply position and width
-		cell.X = newX
-		cell.Y = newY
-		cell.Width = widths[i]
+        // Compute width across spanned columns + inner gaps
+        w := 0.0
+        for j := 0; j < span && colIdx+j < len(colWidths); j++ {
+            w += colWidths[colIdx+j]
+        }
+        if span > 1 {
+            w += cellGapX * float64(span-1)
+        }
 
-		e.shiftDescendants(cell, dx, dy)
+        oldX, oldY := cell.X, cell.Y
+        newX, newY := colX[colIdx], row.Y
+        dx, dy := newX-oldX, newY-oldY
 
-		if len(cell.Children) > 0 {
-			last := cell.Children[len(cell.Children)-1]
-			calcH := last.GetY() + last.GetHeight() - cell.Y
-			if calcH < 20 {
-				calcH = 20
-			}
-			cell.Height = calcH
-		} else if cell.Height == 0 {
-			cell.Height = 20
-		}
+        // Apply position and width
+        cell.X = newX
+        cell.Y = newY
+        cell.Width = w
 
-		if cell.Height > maxH {
-			maxH = cell.Height
-		}
-		// Advance by width plus gap (no trailing gap after last cell)
-		x += widths[i]
-		if i < len(cells)-1 {
-			x += cellGapX
-		}
-	}
+        e.shiftDescendants(cell, dx, dy)
+
+        if len(cell.Children) > 0 {
+            last := cell.Children[len(cell.Children)-1]
+            calcH := last.GetY() + last.GetHeight() - cell.Y
+            if calcH < 20 {
+                calcH = 20
+            }
+            cell.Height = calcH
+        } else if cell.Height == 0 {
+            cell.Height = 20
+        }
+
+        if cell.Height > maxH {
+            maxH = cell.Height
+        }
+
+        // Advance by spanned columns
+        x = newX + w
+        if colIdx+span < colCount {
+            x += cellGapX
+        }
+        colIdx += span
+    }
 	if maxH < 20 {
 		maxH = 20
 	}
@@ -599,11 +740,13 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 		}
 		fontSize := parseLength(fontSizeVal, 0, 16)
 
-		// Determine vertical position below the previous sibling
+		// Determine vertical position below the previous sibling; include parent padding/border for first line
 		childY := parentBox.Y
 		if len(parentBox.Children) > 0 {
 			last := parentBox.Children[len(parentBox.Children)-1]
 			childY = last.GetY() + last.GetHeight()
+		} else {
+			childY = parentBox.Y + parentBox.PaddingTop + parentBox.BorderTop
 		}
 
 		lineHeight := 1.25 * fontSize
@@ -611,12 +754,18 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 			lineHeight = parseLength(lhProp.Value, 0, lineHeight)
 		}
 
+		// Respect parent content box (padding/border) for X/Width so padding works in TD/TH
+		contentX := parentBox.X + parentBox.PaddingLeft + parentBox.BorderLeft
+		contentW := parentBox.Width - parentBox.PaddingLeft - parentBox.PaddingRight - parentBox.BorderLeft - parentBox.BorderRight
+		if contentW < 0 {
+			contentW = 0
+		}
 		inlineBox := &InlineBox{
 			Node:   node,
 			Style:  effectiveStyle, // Use merged effective style (captures strong/em)
-			X:      parentBox.X,
+			X:      contentX,
 			Y:      childY,
-			Width:  parentBox.Width,
+			Width:  contentW,
 			Height: lineHeight, // add leading to avoid clipping descenders
 			Text:   strings.TrimSpace(node.Data),
 		}
@@ -748,6 +897,11 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 				e.layoutParagraphInline(node, blockBox, nodeStyle)
 				return
 			}
+			// Lay out table cell inline content with wrapping just like a paragraph
+			// if strings.EqualFold(node.Data, "td") || strings.EqualFold(node.Data, "th") {
+			// 	e.layoutParagraphInline(node, blockBox, nodeStyle)
+			// 	return
+			// }
 		} else {
 			childY := parentBox.Y
 			if len(parentBox.Children) > 0 {
@@ -904,9 +1058,10 @@ func (e *Engine) layoutParagraphInline(pNode *html.Node, container *BlockBox, ba
 		}
 	}
 
-	startX := container.X
+	// Start within the content box of the container (respect padding/border)
+	startX := container.X + container.PaddingLeft + container.BorderLeft
 	maxWidth := container.Width
-	curY := container.Y
+	curY := container.Y + container.PaddingTop + container.BorderTop
 	line := []tkn{}
 	lineWidth := 0.0
 	maxAscent := 0.0
@@ -932,7 +1087,19 @@ func (e *Engine) layoutParagraphInline(pNode *html.Node, container *BlockBox, ba
 			}
 		}
 		baselineY := curY + maxAscent
-		x := 0.0
+		// Compute alignment offset for the entire line
+		// total lineWidth has been accumulated while building the line
+		offsetX := 0.0
+		align := "left"
+		if prop, ok := container.Style["text-align"]; ok && strings.TrimSpace(prop.Value) != "" {
+			align = strings.ToLower(strings.TrimSpace(prop.Value))
+		}
+		if align == "right" || align == "end" {
+			if lineWidth < maxWidth { offsetX = maxWidth - lineWidth }
+		} else if align == "center" {
+			if lineWidth < maxWidth { offsetX = (maxWidth - lineWidth) / 2 }
+		}
+		x := offsetX
 		for _, tk := range line {
 			if tk.drop {
 				continue

@@ -3,6 +3,7 @@ package layout
 import (
 	"github.com/gompdf/gompdf/internal/parser/html"
 	"github.com/gompdf/gompdf/internal/style"
+	"strings"
 )
 
 // BlockBox represents a block-level box in the layout
@@ -26,6 +27,41 @@ type BlockBox struct {
 	BorderBottom  float64
 	BorderLeft    float64
 	Children      []Box
+}
+
+// parseBoxShorthand parses CSS shorthand like:
+//  - "10px"
+//  - "10px 20px"
+//  - "10px 15px 8px"
+//  - "10px 12px 8px 6px"
+// and returns (top, right, bottom, left) values.
+func parseBoxShorthand(value string, containerSize float64, def float64) (float64, float64, float64, float64) {
+    v := strings.TrimSpace(value)
+    if v == "" {
+        return def, def, def, def
+    }
+    parts := strings.Fields(v)
+    to := func(s string) float64 { return parseLength(s, containerSize, def) }
+    switch len(parts) {
+    case 1:
+        a := to(parts[0])
+        return a, a, a, a
+    case 2:
+        vtb := to(parts[0])
+        vrl := to(parts[1])
+        return vtb, vrl, vtb, vrl
+    case 3:
+        t := to(parts[0])
+        r := to(parts[1])
+        b := to(parts[2])
+        return t, r, b, r
+    default:
+        t := to(parts[0])
+        r := to(parts[1])
+        b := to(parts[2])
+        l := to(parts[3])
+        return t, r, b, l
+    }
 }
 
 // NewBlockBox creates a new block box for an element
@@ -57,15 +93,27 @@ func (b *BlockBox) Layout(containingBlock *BlockBox) {
 
 // parseBoxModel parses margin, padding, and border properties
 func (b *BlockBox) parseBoxModel() {
-	b.MarginTop = parseLength(b.Style["margin-top"].Value, b.Width, 0)
-	b.MarginRight = parseLength(b.Style["margin-right"].Value, b.Width, 0)
-	b.MarginBottom = parseLength(b.Style["margin-bottom"].Value, b.Width, 0)
-	b.MarginLeft = parseLength(b.Style["margin-left"].Value, b.Width, 0)
+	// Margin shorthand support
+	if m, ok := b.Style["margin"]; ok && strings.TrimSpace(m.Value) != "" {
+		t, r, bt, l := parseBoxShorthand(m.Value, b.Width, 0)
+		b.MarginTop, b.MarginRight, b.MarginBottom, b.MarginLeft = t, r, bt, l
+	} else {
+		b.MarginTop = parseLength(b.Style["margin-top"].Value, b.Width, 0)
+		b.MarginRight = parseLength(b.Style["margin-right"].Value, b.Width, 0)
+		b.MarginBottom = parseLength(b.Style["margin-bottom"].Value, b.Width, 0)
+		b.MarginLeft = parseLength(b.Style["margin-left"].Value, b.Width, 0)
+	}
 
-	b.PaddingTop = parseLength(b.Style["padding-top"].Value, b.Width, 0)
-	b.PaddingRight = parseLength(b.Style["padding-right"].Value, b.Width, 0)
-	b.PaddingBottom = parseLength(b.Style["padding-bottom"].Value, b.Width, 0)
-	b.PaddingLeft = parseLength(b.Style["padding-left"].Value, b.Width, 0)
+	// Padding shorthand support
+	if p, ok := b.Style["padding"]; ok && strings.TrimSpace(p.Value) != "" {
+		t, r, bt, l := parseBoxShorthand(p.Value, b.Width, 0)
+		b.PaddingTop, b.PaddingRight, b.PaddingBottom, b.PaddingLeft = t, r, bt, l
+	} else {
+		b.PaddingTop = parseLength(b.Style["padding-top"].Value, b.Width, 0)
+		b.PaddingRight = parseLength(b.Style["padding-right"].Value, b.Width, 0)
+		b.PaddingBottom = parseLength(b.Style["padding-bottom"].Value, b.Width, 0)
+		b.PaddingLeft = parseLength(b.Style["padding-left"].Value, b.Width, 0)
+	}
 
 	b.BorderTop = parseLength(b.Style["border-top-width"].Value, b.Width, 0)
 	b.BorderRight = parseLength(b.Style["border-right-width"].Value, b.Width, 0)

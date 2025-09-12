@@ -683,25 +683,18 @@ func (p *Paginator) reflowByBottomThreshold(pages []*Page) []*Page {
 
 // isHeader determines if a box is a header element
 func isHeader(box layout.Box) bool {
-	if blockBox, ok := box.(*layout.BlockBox); ok && blockBox.Node != nil {
-		if blockBox.Node.Data == "header" {
-			return true
-		}
+    if blockBox, ok := box.(*layout.BlockBox); ok && blockBox.Node != nil {
+        if blockBox.Node.Data == "header" {
+            return true
+        }
 
-		for _, attr := range blockBox.Node.Attr {
-			if attr.Key == "class" && (strings.Contains(attr.Val, "header") || strings.Contains(attr.Val, "page-header")) {
-				return true
-			}
-		}
-
-		if blockBox.Y < 100 {
-			if blockBox.Node.Data == "div" || blockBox.Node.Data == "nav" || blockBox.Node.Data == "h1" ||
-				blockBox.Node.Data == "h2" || blockBox.Node.Data == "h3" {
-				return true
-			}
-		}
-	}
-	return false
+        for _, attr := range blockBox.Node.Attr {
+            if attr.Key == "class" && (strings.Contains(attr.Val, "header") || strings.Contains(attr.Val, "page-header")) {
+                return true
+            }
+        }
+    }
+    return false
 }
 
 // isFooter determines if a box is a footer element

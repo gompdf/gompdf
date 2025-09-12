@@ -74,15 +74,27 @@ func (b *InlineBox) Layout(containingBlock *BlockBox) {
 
 // parseBoxModel parses margin, padding, and border properties
 func (b *InlineBox) parseBoxModel() {
-	b.MarginTop = parseLength(b.Style["margin-top"].Value, b.Width, 0)
-	b.MarginRight = parseLength(b.Style["margin-right"].Value, b.Width, 0)
-	b.MarginBottom = parseLength(b.Style["margin-bottom"].Value, b.Width, 0)
-	b.MarginLeft = parseLength(b.Style["margin-left"].Value, b.Width, 0)
+    // Margin shorthand support
+    if m, ok := b.Style["margin"]; ok && strings.TrimSpace(m.Value) != "" {
+        t, r, bt, l := parseBoxShorthand(m.Value, b.Width, 0)
+        b.MarginTop, b.MarginRight, b.MarginBottom, b.MarginLeft = t, r, bt, l
+    } else {
+        b.MarginTop = parseLength(b.Style["margin-top"].Value, b.Width, 0)
+        b.MarginRight = parseLength(b.Style["margin-right"].Value, b.Width, 0)
+        b.MarginBottom = parseLength(b.Style["margin-bottom"].Value, b.Width, 0)
+        b.MarginLeft = parseLength(b.Style["margin-left"].Value, b.Width, 0)
+    }
 
-	b.PaddingTop = parseLength(b.Style["padding-top"].Value, b.Width, 0)
-	b.PaddingRight = parseLength(b.Style["padding-right"].Value, b.Width, 0)
-	b.PaddingBottom = parseLength(b.Style["padding-bottom"].Value, b.Width, 0)
-	b.PaddingLeft = parseLength(b.Style["padding-left"].Value, b.Width, 0)
+    // Padding shorthand support
+    if p, ok := b.Style["padding"]; ok && strings.TrimSpace(p.Value) != "" {
+        t, r, bt, l := parseBoxShorthand(p.Value, b.Width, 0)
+        b.PaddingTop, b.PaddingRight, b.PaddingBottom, b.PaddingLeft = t, r, bt, l
+    } else {
+        b.PaddingTop = parseLength(b.Style["padding-top"].Value, b.Width, 0)
+        b.PaddingRight = parseLength(b.Style["padding-right"].Value, b.Width, 0)
+        b.PaddingBottom = parseLength(b.Style["padding-bottom"].Value, b.Width, 0)
+        b.PaddingLeft = parseLength(b.Style["padding-left"].Value, b.Width, 0)
+    }
 
 	b.BorderTop = parseLength(b.Style["border-top-width"].Value, b.Width, 0)
 	b.BorderRight = parseLength(b.Style["border-right-width"].Value, b.Width, 0)

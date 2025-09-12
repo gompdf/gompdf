@@ -48,13 +48,13 @@
     <div class="table-container">
       <h2 style="font-size: 18px; margin-bottom: 15px;">User Activity Details</h2>
       <div style="overflow-x: auto; width: 100%;">
-        <table class="table" style="width: 100%;">
+        <table class="table" style="width: 100%; border-collapse: separate; border-spacing: 12px 0;">
           <thead>
             <tr>
               <th style="width: 10%; text-align: left; padding: 12px 8px; font-weight: 600;">User ID</th>
-              <th style="width: 30%; text-align: left; padding: 12px 8px; font-weight: 600;">Name</th>
-              <th style="width: 35%; text-align: left; padding: 12px 8px; font-weight: 600;">Email</th>
-              <th style="width: 15%; text-align: left; padding: 12px 8px; font-weight: 600;">Last Login</th>
+              <th style="width: 25%; text-align: left; padding: 12px 8px; font-weight: 600;">Name</th>
+              <th style="width: 25%; text-align: left; padding: 12px 8px; font-weight: 600;">Email</th>
+              <th style="width: 25%; text-align: left; padding: 12px 8px; font-weight: 600;">Last Login</th>
               <th style="width: 10%; text-align: left; padding: 12px 8px; font-weight: 600;">Sessions</th>
             </tr>
           </thead>
@@ -62,9 +62,9 @@
             {{range .Users}}
             <tr class="table-row">
               <td style="width: 10%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.ID}}</td>
-              <td style="width: 30%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.Name}}</td>
-              <td style="width: 35%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.Email}}</td>
-              <td style="width: 15%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.LastLogin}}</td>
+              <td style="width: 25%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.Name}}</td>
+              <td style="width: 25%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.Email}}</td>
+              <td style="width: 25%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.LastLogin}}</td>
               <td style="width: 10%; padding: 12px 8px; overflow: hidden; text-overflow: ellipsis;">{{.Sessions}}</td>
             </tr>
             {{end}}
