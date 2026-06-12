@@ -14,13 +14,12 @@ func main() {
   <meta charset="utf-8" />
   <title>Hello GomPDF</title>
   <style>
-    :root { --ink: #1f2937; --muted: #6b7280; }
-    body { font-family: Helvetica, Arial, sans-serif; color: var(--ink); margin: 0; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1f2937; margin: 0; }
     .page { padding: 32px; }
     h1 { margin: 0 0 12px; font-size: 28px; }
     p { margin: 0 0 10px; line-height: 1.5; }
     .box { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
-    .muted { color: var(--muted); }
+    .muted { color: #6b7280; }
   </style>
 </head>
 <body>

@@ -1,48 +1,27 @@
 # Examples
 
-A collection of small, focused examples showing how to use the `github.com/gompdf/gompdf` API.
+These examples stay inside the MVP subset that GomPDF supports today.
 
-- Minimal
-  - Directory: `examples/minimal/`
-  - Shows converting inline HTML to a PDF using `ConvertToFile` with default A4 and simple margins.
-  - Run:
-    ```bash
-    cd examples/minimal
-    go run main.go
-    ```
+## Minimal
 
-- URL to PDF
-  - Directory: `examples/url_to_pdf/`
-  - Fetches a web page via `ConvertURL` and saves a PDF. Network-dependent.
-  - Run:
-    ```bash
-    cd examples/url_to_pdf
-    go run main.go -url https://example.com -o page.pdf
-    ```
+Converts an inline HTML string to PDF.
 
-- Images and Styles
-  - Directory: `examples/images_and_styles/`
-  - Demonstrates `ConvertFile` with local CSS and images resolved via `Options.ResourcePaths`.
-  - Run:
-    ```bash
-    cd examples/images_and_styles
-    go run main.go
-    ```
+```bash
+cd examples/minimal
+go run .
+```
 
-- Simple Invoice
-  - Directory: `examples/invoice/`
-  - Renders an invoice from a Go HTML template and converts it using `ConvertFile`. Includes basic arithmetic in the template via a custom `mul` function.
-  - Run:
-    ```bash
-    cd examples/invoice
-    go run main.go
-    ```
+## Images and Styles
 
-- User Report (Tailwind-inspired)
-  - Directory: `examples/user_report/`
-  - Generates a multi-page, table-heavy report using a Go template and converts it via `ConvertFile`. Configured for US Letter and 36pt margins.
-  - Run:
-    ```bash
-    cd examples/user_report
-    go run main.go
-    ```
+Loads local CSS and a local image or SVG from disk.
+
+```bash
+cd examples/images_and_styles
+go run .
+```
+
+## Experimental
+
+The repository still contains older or more ambitious examples under
+`examples/invoice/`, `examples/url_to_pdf/`, and `examples/user_report/`.
+They are kept for reference, but they are not part of the small MVP promise.

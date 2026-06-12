@@ -15,6 +15,7 @@ import (
 	"github.com/gompdf/gompdf/internal/layout"
 	"github.com/gompdf/gompdf/internal/pagination"
 	"github.com/gompdf/gompdf/internal/res"
+	pdftext "github.com/gompdf/gompdf/internal/text"
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
 )
@@ -45,8 +46,12 @@ type Renderer struct {
 func (r *Renderer) resourceToPNG(resrc *res.Resource, w, h int) ([]byte, error) {
 	if strings.EqualFold(strings.TrimSpace(resrc.MimeType), "image/svg+xml") {
 		// Rasterize SVG using oksvg
-		if w <= 0 { w = 100 }
-		if h <= 0 { h = 100 }
+		if w <= 0 {
+			w = 100
+		}
+		if h <= 0 {
+			h = 100
+		}
 		icon, err := oksvg.ReadIconStream(bytes.NewReader(resrc.Data))
 		if err != nil {
 			return nil, fmt.Errorf("svg parse: %w", err)
@@ -386,7 +391,7 @@ func (r *Renderer) renderBackground(pdf *fpdf.Fpdf, box layout.Box) {
 		pdf.SetFont("Helvetica", "", 8)
 		pdf.SetTextColor(150, 150, 150)
 		dimensionText := fmt.Sprintf("%.0fx%.0f", box.GetWidth(), box.GetHeight())
-		pdf.Text(box.GetX()+2, box.GetY()+10, dimensionText)
+		pdf.Text(box.GetX()+2, box.GetY()+10, pdftext.EncodeForPDF(dimensionText))
 	}
 }
 
@@ -540,7 +545,8 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 		align = "right"
 	}
 
-	textWidth := pdf.GetStringWidth(text)
+	encodedText := pdftext.EncodeForPDF(text)
+	textWidth := pdf.GetStringWidth(encodedText)
 	var startX float64
 	switch align {
 	case "center":
@@ -557,47 +563,47 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 		startX = box.X + box.Width
 	}
 
-    // Compute baseline Y. Inline tokens produced by layoutParagraphInline() have Node == nil
-    // and their Y was set to (baseline - fontSize), so baseline is simply Y + fontSize.
-    var baselineY float64
-    if box.Node == nil {
-        baselineY = box.Y + fontSize
-    } else {
-        // For standalone inline boxes with real nodes, derive baseline using ascent/descent and half-leading.
-        paddingTop := box.PaddingTop
-        paddingBottom := box.PaddingBottom
-        borderTop := box.BorderTop
-        borderBottom := box.BorderBottom
-        contentHeight := box.Height - paddingTop - paddingBottom - borderTop - borderBottom
-        if contentHeight < 0 {
-            contentHeight = 0
-        }
-        // Approximate ascent/descent
-        ascent := 0.80 * fontSize
-        descent := 0.20 * fontSize
-        if ascent+descent > contentHeight {
-            // Clamp if line-height is smaller than font bounds
-            scale := contentHeight / (ascent + descent)
-            if scale < 0 {
-                scale = 0
-            }
-            ascent *= scale
-            descent *= scale
-        }
-        leading := contentHeight - (ascent + descent)
-        if leading < 0 {
-            leading = 0
-        }
-        baselineOffset := ascent + (leading / 2.0)
-        baselineY = box.Y + borderTop + paddingTop + baselineOffset
-    }
+	// Compute baseline Y. Inline tokens produced by layoutParagraphInline() have Node == nil
+	// and their Y was set to (baseline - fontSize), so baseline is simply Y + fontSize.
+	var baselineY float64
+	if box.Node == nil {
+		baselineY = box.Y + fontSize
+	} else {
+		// For standalone inline boxes with real nodes, derive baseline using ascent/descent and half-leading.
+		paddingTop := box.PaddingTop
+		paddingBottom := box.PaddingBottom
+		borderTop := box.BorderTop
+		borderBottom := box.BorderBottom
+		contentHeight := box.Height - paddingTop - paddingBottom - borderTop - borderBottom
+		if contentHeight < 0 {
+			contentHeight = 0
+		}
+		// Approximate ascent/descent
+		ascent := 0.80 * fontSize
+		descent := 0.20 * fontSize
+		if ascent+descent > contentHeight {
+			// Clamp if line-height is smaller than font bounds
+			scale := contentHeight / (ascent + descent)
+			if scale < 0 {
+				scale = 0
+			}
+			ascent *= scale
+			descent *= scale
+		}
+		leading := contentHeight - (ascent + descent)
+		if leading < 0 {
+			leading = 0
+		}
+		baselineOffset := ascent + (leading / 2.0)
+		baselineY = box.Y + borderTop + paddingTop + baselineOffset
+	}
 
 	if r.Debug {
 		fmt.Printf("Rendering text: '%s' at (%.2f, %.2f) with font %s %.0fpt, color: %v\n",
 			text, startX, baselineY, fontFamily, fontSize, textColor)
 	}
 
-	pdf.Text(startX, baselineY, text)
+	pdf.Text(startX, baselineY, encodedText)
 
 	if r.DebugDrawBoxes {
 		pdf.SetDrawColor(255, 0, 0)
@@ -630,27 +636,27 @@ func (r *Renderer) renderText(pdf *fpdf.Fpdf, box *layout.InlineBox) {
 
 // parseFloat parses a float value with a default
 func parseFloat(value string, defaultValue float64) float64 {
-    var result float64
-    _, err := fmt.Sscanf(value, "%f", &result)
-    if err != nil {
-        return defaultValue
-    }
-    return result
+	var result float64
+	_, err := fmt.Sscanf(value, "%f", &result)
+	if err != nil {
+		return defaultValue
+	}
+	return result
 }
 
 // parseCSSFloat parses a numeric CSS value like "16px" or "12" into a float.
 // Only simple units are supported here (px, pt); defaults if parsing fails.
 func parseCSSFloat(value string, defaultValue float64) float64 {
-    v := strings.TrimSpace(value)
-    if strings.HasSuffix(v, "px") {
-        v = strings.TrimSuffix(v, "px")
-    } else if strings.HasSuffix(v, "pt") {
-        v = strings.TrimSuffix(v, "pt")
-    }
-    if f, err := strconv.ParseFloat(v, 64); err == nil {
-        return f
-    }
-    return defaultValue
+	v := strings.TrimSpace(value)
+	if strings.HasSuffix(v, "px") {
+		v = strings.TrimSuffix(v, "px")
+	} else if strings.HasSuffix(v, "pt") {
+		v = strings.TrimSuffix(v, "pt")
+	}
+	if f, err := strconv.ParseFloat(v, 64); err == nil {
+		return f
+	}
+	return defaultValue
 }
 
 // parseColor parses a CSS color value
@@ -767,12 +773,13 @@ func (r *Renderer) renderListMarker(pdf *fpdf.Fpdf, li *layout.BlockBox, ctx lis
 		pdf.SetTextColor(color[0], color[1], color[2])
 		pdf.SetFont("Helvetica", "", fontSize)
 
-		markerWidth := pdf.GetStringWidth(marker)
+		encodedMarker := pdftext.EncodeForPDF(marker)
+		markerWidth := pdf.GetStringWidth(encodedMarker)
 		startX := li.X - markerWidth - fontSize*0.2
 		if startX < 0 {
 			startX = 0
 		}
-		pdf.Text(startX, li.Y+fontSize, marker)
+		pdf.Text(startX, li.Y+fontSize, encodedMarker)
 		return
 	}
 }

@@ -17,10 +17,11 @@ type Specificity struct {
 
 // StyleProperty represents a computed style property
 type StyleProperty struct {
-	Name      string
-	Value     string
-	Important bool
-	Source    Source
+	Name        string
+	Value       string
+	Important   bool
+	Source      Source
+	Specificity Specificity
 }
 
 // Source represents the source of a style property
@@ -125,21 +126,20 @@ func (e *StyleEngine) applyDeclarations(style ComputedStyle, declarations []*css
 		property := decl.Property
 		existing, exists := style[property]
 
-		// Apply the new declaration if:
-		// 1. The property doesn't exist yet, or
-		// 2. The new declaration is !important and the existing one is not, or
-		// 3. Both have the same importance but the new one has higher specificity, or
-		// 4. Both have the same importance and specificity but the new one comes from a higher priority source
+		// Apply the new declaration if it wins on importance, origin/source, or specificity.
+		// When importance, origin and specificity tie, the later declaration wins because
+		// stylesheets and rules are processed in document order.
 		if !exists ||
 			(decl.Important && !existing.Important) ||
-			(decl.Important == existing.Important && compareSpecificity(specificity, Specificity{}) > 0) ||
-			(decl.Important == existing.Important && compareSpecificity(specificity, Specificity{}) == 0 && source > existing.Source) {
+			(decl.Important == existing.Important && source > existing.Source) ||
+			(decl.Important == existing.Important && source == existing.Source && compareSpecificity(specificity, existing.Specificity) >= 0) {
 
 			style[property] = StyleProperty{
-				Name:      property,
-				Value:     decl.Value,
-				Important: decl.Important,
-				Source:    source,
+				Name:        property,
+				Value:       decl.Value,
+				Important:   decl.Important,
+				Source:      source,
+				Specificity: specificity,
 			}
 		}
 	}

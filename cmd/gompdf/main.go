@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -10,40 +12,80 @@ import (
 )
 
 func main() {
-	var (
-		inputFile  string
-		outputFile string
-		verbose    bool
-	)
+	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			os.Exit(0)
+		}
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
 
-	flag.StringVar(&inputFile, "input", "", "Input HTML file path")
-	flag.StringVar(&outputFile, "output", "", "Output PDF file path")
-	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
-	flag.Parse()
+func run(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("gompdf", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: gompdf [options] <input.html> [output.pdf]")
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "Options:")
+		fs.PrintDefaults()
+	}
+
+	var inputFile string
+	var outputFile string
+	var verbose bool
+
+	fs.StringVar(&inputFile, "input", "", "Input HTML file path")
+	fs.StringVar(&inputFile, "i", "", "Input HTML file path")
+	fs.StringVar(&outputFile, "output", "", "Output PDF file path")
+	fs.StringVar(&outputFile, "o", "", "Output PDF file path")
+	fs.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
+	fs.BoolVar(&verbose, "v", false, "Enable verbose logging")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	rest := fs.Args()
+	if inputFile == "" && len(rest) > 0 {
+		inputFile = rest[0]
+	}
+	if outputFile == "" && len(rest) > 1 {
+		outputFile = rest[1]
+	}
+	if len(rest) > 2 {
+		return fmt.Errorf("unexpected extra arguments: %v", rest[2:])
+	}
 
 	if inputFile == "" {
-		fmt.Println("Error: input file is required")
-		flag.Usage()
-		os.Exit(1)
+		fs.Usage()
+		return errors.New("input file is required")
 	}
 
 	if outputFile == "" {
-		ext := filepath.Ext(inputFile)
-		outputFile = inputFile[:len(inputFile)-len(ext)] + ".pdf"
+		outputFile = deriveOutputPath(inputFile)
 	}
 
 	converter := gompdf.New()
-
 	if verbose {
 		converter = converter.SetDebug(true)
 	}
-	err := converter.ConvertFile(inputFile, outputFile)
-	if err != nil {
-		fmt.Printf("Error converting file: %v\n", err)
-		os.Exit(1)
+
+	if err := converter.ConvertFile(inputFile, outputFile); err != nil {
+		return err
 	}
 
 	if verbose {
-		fmt.Printf("Successfully converted %s to %s\n", inputFile, outputFile)
+		fmt.Fprintf(stdout, "Successfully converted %s to %s\n", inputFile, outputFile)
 	}
+
+	return nil
+}
+
+func deriveOutputPath(inputFile string) string {
+	ext := filepath.Ext(inputFile)
+	if ext == "" {
+		return inputFile + ".pdf"
+	}
+	return inputFile[:len(inputFile)-len(ext)] + ".pdf"
 }

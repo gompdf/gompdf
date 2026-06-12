@@ -97,19 +97,24 @@ func renderNode(w io.Writer, n *Node) error {
 		return nil
 	}
 
+	return html.Render(w, toHTMLNode(n, nil))
+}
+
+func toHTMLNode(n *Node, parent *html.Node) *html.Node {
+	if n == nil {
+		return nil
+	}
+
 	node := &html.Node{
-		Type: n.Type,
-		Data: n.Data,
-		Attr: n.Attr,
+		Type:   n.Type,
+		Data:   n.Data,
+		Attr:   n.Attr,
+		Parent: parent,
 	}
 
 	var firstChild, lastChild *html.Node
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		child := &html.Node{
-			Type: c.Type,
-			Data: c.Data,
-			Attr: c.Attr,
-		}
+		child := toHTMLNode(c, node)
 		if firstChild == nil {
 			firstChild = child
 		}
@@ -122,5 +127,5 @@ func renderNode(w io.Writer, n *Node) error {
 	node.FirstChild = firstChild
 	node.LastChild = lastChild
 
-	return html.Render(w, node)
+	return node
 }
