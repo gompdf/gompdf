@@ -26,6 +26,25 @@ var (
 // orientation is a package variable to control PDF orientation for measurement
 var orientation = "P" // Default to portrait
 
+var inheritableStyleKeys = map[string]struct{}{
+	"color":               {},
+	"direction":           {},
+	"font-family":         {},
+	"font-size":           {},
+	"font-style":          {},
+	"font-weight":         {},
+	"letter-spacing":      {},
+	"line-height":         {},
+	"list-style-position": {},
+	"list-style-type":     {},
+	"text-align":          {},
+	"text-decoration":     {},
+	"text-transform":      {},
+	"visibility":          {},
+	"white-space":         {},
+	"word-spacing":        {},
+}
+
 // SetMeasurementOrientation sets the orientation for text measurement
 func SetMeasurementOrientation(o string) {
 	if o == "L" || o == "P" {
@@ -380,6 +399,7 @@ func (e *Engine) layoutTableRow(row *BlockBox) {
 		cell.Width = w
 
 		e.shiftDescendants(cell, dx, dy)
+		e.normalizeTableCellDescendants(cell)
 
 		if len(cell.Children) > 0 {
 			last := cell.Children[len(cell.Children)-1]
@@ -409,6 +429,56 @@ func (e *Engine) layoutTableRow(row *BlockBox) {
 	row.Height = maxH
 }
 
+// normalizeTableCellDescendants reflows the descendants of a table cell after
+// the row's column widths have been finalized.
+func (e *Engine) normalizeTableCellDescendants(cell *BlockBox) {
+	if cell == nil {
+		return
+	}
+
+	availableWidth := cell.Width - cell.PaddingLeft - cell.PaddingRight - cell.BorderLeft - cell.BorderRight
+	if availableWidth < 0 {
+		availableWidth = 0
+	}
+
+	for _, child := range cell.Children {
+		e.normalizeBoxWidth(child, availableWidth)
+	}
+}
+
+func (e *Engine) normalizeBoxWidth(box Box, availableWidth float64) {
+	switch b := box.(type) {
+	case *BlockBox:
+		w := availableWidth - b.MarginLeft - b.MarginRight
+		if w < 0 {
+			w = 0
+		}
+		b.Width = w
+		childWidth := w - b.PaddingLeft - b.PaddingRight - b.BorderLeft - b.BorderRight
+		if childWidth < 0 {
+			childWidth = 0
+		}
+		for _, child := range b.Children {
+			e.normalizeBoxWidth(child, childWidth)
+		}
+	case *InlineBox:
+		w := availableWidth - b.MarginLeft - b.MarginRight
+		if w < 0 {
+			w = 0
+		}
+		b.Width = w
+		childWidth := w - b.PaddingLeft - b.PaddingRight - b.BorderLeft - b.BorderRight
+		if childWidth < 0 {
+			childWidth = 0
+		}
+		for _, child := range b.Children {
+			e.normalizeBoxWidth(child, childWidth)
+		}
+	case *ImageBox:
+		// Keep explicit image dimensions intact.
+	}
+}
+
 // shiftDescendants shifts all descendant boxes of the given block by (dx, dy)
 func (e *Engine) shiftDescendants(b *BlockBox, dx, dy float64) {
 	if b == nil {
@@ -432,12 +502,15 @@ func (e *Engine) shiftDescendants(b *BlockBox, dx, dy float64) {
 
 // Engine handles the layout process
 type Engine struct {
-	options Options
-	styles  map[*html.Node]style.ComputedStyle
-	Debug   bool
-	Width   float64
-	Height  float64
-	Margin  float64
+	options      Options
+	styles       map[*html.Node]style.ComputedStyle
+	Debug        bool
+	Width        float64
+	Height       float64
+	MarginTop    float64
+	MarginRight  float64
+	MarginBottom float64
+	MarginLeft   float64
 }
 
 // NewEngine creates a new layout engine
@@ -448,11 +521,14 @@ func NewEngine() *Engine {
 			Height: 841.89, // Default A4 height in points
 			DPI:    96,     // Default DPI
 		},
-		styles: make(map[*html.Node]style.ComputedStyle),
-		Debug:  false,
-		Width:  595.28, // Default A4 width in points
-		Height: 841.89, // Default A4 height in points
-		Margin: 50,     // Default margin in points
+		styles:       make(map[*html.Node]style.ComputedStyle),
+		Debug:        false,
+		Width:        595.28, // Default A4 width in points
+		Height:       841.89, // Default A4 height in points
+		MarginTop:    50,
+		MarginRight:  50,
+		MarginBottom: 50,
+		MarginLeft:   50,
 	}
 }
 
@@ -461,9 +537,14 @@ func (e *Engine) SetOptions(options Options) {
 	e.options = options
 	e.Width = options.Width
 	e.Height = options.Height
-	if e.Margin == 0 {
-		e.Margin = 50 // Default margin
-	}
+}
+
+// SetMargins configures the page margins used to initialize the layout root box.
+func (e *Engine) SetMargins(top, right, bottom, left float64) {
+	e.MarginTop = top
+	e.MarginRight = right
+	e.MarginBottom = bottom
+	e.MarginLeft = left
 }
 
 // SetStyles sets the computed styles for the layout engine
@@ -474,11 +555,19 @@ func (e *Engine) SetStyles(styles map[*html.Node]style.ComputedStyle) {
 // Layout creates a layout tree from a document
 func (e *Engine) Layout(doc interface{}) *BlockBox {
 	// Create the root box
+	rootWidth := e.Width - (e.MarginLeft + e.MarginRight)
+	rootHeight := e.Height - (e.MarginTop + e.MarginBottom)
+	if rootWidth < 0 {
+		rootWidth = 0
+	}
+	if rootHeight < 0 {
+		rootHeight = 0
+	}
 	rootBox := &BlockBox{
-		X:        e.Margin,
-		Y:        e.Margin,
-		Width:    e.Width - (2 * e.Margin),
-		Height:   e.Height - (2 * e.Margin),
+		X:        e.MarginLeft,
+		Y:        e.MarginTop,
+		Width:    rootWidth,
+		Height:   rootHeight,
 		Children: []Box{},
 	}
 
@@ -731,27 +820,10 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 		}
 
 		effectiveStyle := style.ComputedStyle{}
-		if parentBox != nil && parentBox.GetNode() != nil {
-			if ps, ok := e.styles[parentBox.GetNode()]; ok {
-				effectiveStyle = ps
-				if e.Debug {
-					fmt.Printf("Found parent box style for text node: %v\n", effectiveStyle)
-				}
-			}
-		}
-		if node.Parent != nil {
-			if ps, ok := e.styles[node.Parent]; ok {
-				merged := make(style.ComputedStyle)
-				for k, v := range effectiveStyle {
-					merged[k] = v
-				}
-				for k, v := range ps {
-					merged[k] = v
-				}
-				effectiveStyle = merged
-				if e.Debug {
-					fmt.Printf("Merged parent element style for text node: %v\n", ps)
-				}
+		if parentBox != nil {
+			effectiveStyle = e.filterInheritedTextStyle(parentBox.Style)
+			if e.Debug {
+				fmt.Printf("Using inherited text-only style for text node: %v\n", effectiveStyle)
 			}
 		}
 
@@ -831,9 +903,12 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 		var nodeStyle style.ComputedStyle // Default empty style
 
 		parentStyle := style.ComputedStyle{}
-		if parentBox != nil && parentBox.GetNode() != nil {
-			if ps, ok := e.styles[parentBox.GetNode()]; ok {
-				parentStyle = ps
+		if parentBox != nil {
+			parentStyle = parentBox.Style
+			if len(parentStyle) == 0 && parentBox.GetNode() != nil {
+				if ps, ok := e.styles[parentBox.GetNode()]; ok {
+					parentStyle = ps
+				}
 			}
 		}
 
@@ -864,9 +939,12 @@ func (e *Engine) processNode(node *html.Node, parentBox *BlockBox, depth int) {
 			// Determine merged style for the element
 			nodeStyle := style.ComputedStyle{}
 			parentStyle := style.ComputedStyle{}
-			if parentBox != nil && parentBox.GetNode() != nil {
-				if ps, ok := e.styles[parentBox.GetNode()]; ok {
-					parentStyle = ps
+			if parentBox != nil {
+				parentStyle = parentBox.Style
+				if len(parentStyle) == 0 && parentBox.GetNode() != nil {
+					if ps, ok := e.styles[parentBox.GetNode()]; ok {
+						parentStyle = ps
+					}
 				}
 			}
 			if thisNodeStyle, ok := e.styles[node]; ok {
@@ -1051,7 +1129,9 @@ func (e *Engine) mergeStyles(parentStyle, childStyle style.ComputedStyle) style.
 	mergedStyle := make(style.ComputedStyle)
 
 	for key, value := range parentStyle {
-		mergedStyle[key] = value
+		if _, ok := inheritableStyleKeys[strings.ToLower(key)]; ok {
+			mergedStyle[key] = value
+		}
 	}
 
 	for key, value := range childStyle {
@@ -1059,6 +1139,20 @@ func (e *Engine) mergeStyles(parentStyle, childStyle style.ComputedStyle) style.
 	}
 
 	return mergedStyle
+}
+
+func (e *Engine) filterInheritedTextStyle(st style.ComputedStyle) style.ComputedStyle {
+	if len(st) == 0 {
+		return style.ComputedStyle{}
+	}
+
+	filtered := make(style.ComputedStyle)
+	for key, value := range st {
+		if _, ok := inheritableStyleKeys[strings.ToLower(key)]; ok {
+			filtered[key] = value
+		}
+	}
+	return filtered
 }
 
 // isBlockTag reports whether a tag name is treated as block-level

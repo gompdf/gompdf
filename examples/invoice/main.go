@@ -97,7 +97,8 @@ func main() {
 	abs, _ := filepath.Abs(htmlPath)
 
 	opts := gompdf.DefaultOptions()
-	opts.MarginTop, opts.MarginRight, opts.MarginBottom, opts.MarginLeft = 36, 36, 36, 36
+	opts.PageOrientation = gompdf.PageOrientationLandscape
+	opts.MarginTop, opts.MarginRight, opts.MarginBottom, opts.MarginLeft = 18, 18, 18, 18
 	opts.RenderBackgrounds = true
 	opts.RenderBorders = true
 	conv := gompdf.NewWithOptions(opts)

@@ -8,35 +8,30 @@
       font-family: Helvetica, Arial, sans-serif;
       color: #111827;
       margin: 0;
-      font-size: 12px;
-      line-height: 1.4;
+      font-size: 11px;
+      line-height: 1.35;
     }
     .page {
-      padding: 24px;
+      padding: 0;
+      font-size: 11px;
+      line-height: 1.35;
     }
     .title {
-      font-size: 28px;
-      margin: 0 0 6px 0;
+      font-size: 22px;
+      margin: 0 0 4px 0;
       font-weight: bold;
     }
     .muted {
       color: #6b7280;
+      font-size: 11px;
+    }
+    strong {
+      font-size: 11px;
     }
     .header {
       width: 100%;
       border-spacing: 0;
       margin-bottom: 12px;
-    }
-    .header td {
-      vertical-align: top;
-      padding: 0;
-    }
-    .date-table {
-      width: 100%;
-      border-spacing: 0;
-    }
-    .date-table td {
-      padding: 0 0 6px 0;
     }
     .rule {
       border-top: 1px solid #e5e7eb;
@@ -48,39 +43,36 @@
       border-spacing: 0;
       margin-bottom: 14px;
     }
-    .billing td {
-      vertical-align: top;
-      padding: 0;
-    }
     .card {
       border: 1px solid #e5e7eb;
       background: #f9fafb;
       padding: 12px;
     }
     .section-label {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: bold;
       margin-bottom: 6px;
       text-transform: uppercase;
       letter-spacing: 0.02em;
     }
     .bill-name {
-      font-size: 16px;
+      font-size: 13px;
       font-weight: bold;
       margin-bottom: 2px;
     }
     .address {
       color: #6b7280;
+      font-size: 11px;
     }
     .items {
       width: 100%;
+      border-collapse: separate;
       border-spacing: 0;
     }
     .items th,
     .items td {
-      padding: 8px 12px;
-      border-bottom: 1px solid #e5e7eb;
-      text-align: left;
+      font-size: 11px;
+      line-height: 1.3;
     }
     .items th {
       background: #f9fafb;
@@ -89,42 +81,36 @@
     .right {
       text-align: right;
     }
-    .items tfoot td {
-      border-top: 2px solid #d1d5db;
-      border-bottom: 0;
-    }
     .footer {
       margin-top: 12px;
       color: #6b7280;
+      font-size: 11px;
+    }
+    .meta-line {
+      font-size: 11px;
     }
   </style>
 </head>
 <body>
   <div class="page">
-    <table class="header">
+    <table class="header" style="width: 100%; border-spacing: 0; margin-bottom: 12px;">
       <tr>
-        <td width="60%">
+        <td width="60%" style="padding: 0; border: 0; vertical-align: top;">
           <div class="title">Invoice</div>
           <div class="muted">No. {{.InvoiceNo}}</div>
         </td>
-        <td width="40%" class="right">
-          <table class="date-table">
-            <tr>
-              <td class="right"><strong>Issue date:</strong> {{.IssueDate}}</td>
-            </tr>
-            <tr>
-              <td class="right"><strong>Due date:</strong> {{.DueDate}}</td>
-            </tr>
-          </table>
+        <td width="40%" class="right" style="padding: 0; border: 0; vertical-align: top;">
+          <div class="meta-line"><strong>Issue date:</strong> {{.IssueDate}}</div>
+          <div class="meta-line"><strong>Due date:</strong> {{.DueDate}}</div>
         </td>
       </tr>
     </table>
 
     <div class="rule"></div>
 
-    <table class="billing">
+    <table class="billing" style="width: 100%; border-spacing: 0; margin-bottom: 14px;">
       <tr>
-        <td width="60%">
+        <td width="60%" style="padding: 0; border: 0; vertical-align: top;">
           <div class="card">
             <div class="section-label">Bill to</div>
             <div class="bill-name">{{.BillToName}}</div>
@@ -132,7 +118,7 @@
             <div class="address">{{.BillToLine2}}</div>
           </div>
         </td>
-        <td width="40%">
+        <td width="40%" style="padding: 0; border: 0; vertical-align: top;">
           <div style="padding-left: 16px;">
             <div class="section-label">Summary</div>
             <div class="muted">Invoice date {{.IssueDate}}</div>
@@ -142,37 +128,37 @@
       </tr>
     </table>
 
-    <table class="items">
+    <table class="items" style="width: 100%; border-spacing: 0;">
       <thead>
         <tr>
-          <th width="56%">Description</th>
-          <th width="10%" class="right">Qty</th>
-          <th width="17%" class="right">Unit price</th>
-          <th width="17%" class="right">Amount</th>
+          <th width="56%" style="padding: 8px 12px; border: 0; border-bottom: 1px solid #e5e7eb; text-align: left;">Description</th>
+          <th width="10%" class="right" style="padding: 8px 12px; border: 0; border-bottom: 1px solid #e5e7eb;">Qty</th>
+          <th width="17%" class="right" style="padding: 8px 12px; border: 0; border-bottom: 1px solid #e5e7eb;">Unit price</th>
+          <th width="17%" class="right" style="padding: 8px 12px; border: 0; border-bottom: 1px solid #e5e7eb;">Amount</th>
         </tr>
       </thead>
       <tbody>
         {{range .Items}}
         <tr>
-          <td>{{.Description}}</td>
-          <td class="right">{{.Qty}}</td>
-          <td class="right">{{printf "%.2f" .UnitPrice}}</td>
-          <td class="right">{{printf "%.2f" (mul .Qty .UnitPrice)}}</td>
+          <td style="padding: 8px 12px; border: 0; border-bottom: 1px solid #e5e7eb;">{{.Description}}</td>
+          <td class="right" style="padding: 8px 12px; border: 0; border-bottom: 1px solid #e5e7eb;">{{.Qty}}</td>
+          <td class="right" style="padding: 8px 12px; border: 0; border-bottom: 1px solid #e5e7eb;">{{printf "%.2f" .UnitPrice}}</td>
+          <td class="right" style="padding: 8px 12px; border: 0; border-bottom: 1px solid #e5e7eb;">{{printf "%.2f" (mul .Qty .UnitPrice)}}</td>
         </tr>
         {{end}}
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="3" class="right"><strong>Subtotal</strong></td>
-          <td class="right">{{printf "%.2f" .Subtotal}}</td>
+          <td colspan="3" class="right" style="padding: 8px 12px; border: 0; border-top: 2px solid #d1d5db;"><strong>Subtotal</strong></td>
+          <td class="right" style="padding: 8px 12px; border: 0; border-top: 2px solid #d1d5db;">{{printf "%.2f" .Subtotal}}</td>
         </tr>
         <tr>
-          <td colspan="3" class="right"><strong>Tax ({{printf "%.0f" (mul .TaxRate 100)}}%)</strong></td>
-          <td class="right">{{printf "%.2f" .TaxAmount}}</td>
+          <td colspan="3" class="right" style="padding: 8px 12px; border: 0;"><strong>Tax ({{printf "%.0f" (mul .TaxRate 100)}}%)</strong></td>
+          <td class="right" style="padding: 8px 12px; border: 0;">{{printf "%.2f" .TaxAmount}}</td>
         </tr>
         <tr>
-          <td colspan="3" class="right"><strong>Total</strong></td>
-          <td class="right"><strong>{{printf "%.2f" .Total}}</strong></td>
+          <td colspan="3" class="right" style="padding: 8px 12px; border: 0;"><strong>Total</strong></td>
+          <td class="right" style="padding: 8px 12px; border: 0;"><strong>{{printf "%.2f" .Total}}</strong></td>
         </tr>
       </tfoot>
     </table>

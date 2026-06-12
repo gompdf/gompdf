@@ -14,3 +14,5 @@ bin/
 .vscode/
 .idea/
 license_use.md
+ROADMAP.md
+.DS_Store

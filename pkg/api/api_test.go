@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -96,6 +98,36 @@ func TestConvertToFileRendersStyledShorthands(t *testing.T) {
 	}
 	if !strings.Contains(streams, pdfColorCommand(229, 231, 235, "RG")) {
 		t.Fatalf("expected border stroke color in PDF streams:\n%s", streams)
+	}
+}
+
+func TestConvertToFileRespectsConfiguredMargins(t *testing.T) {
+	converter := NewWithOptions(DefaultOptions())
+	converter.options.MarginTop = 10
+	converter.options.MarginRight = 20
+	converter.options.MarginBottom = 30
+	converter.options.MarginLeft = 40
+	outputPath := filepath.Join(t.TempDir(), "margins.pdf")
+
+	html := `<!doctype html>
+<html>
+  <body>
+    <div style="font-size: 11px; margin: 0;">Hello margins</div>
+  </body>
+</html>`
+
+	if err := converter.ConvertToFile(html, outputPath); err != nil {
+		t.Fatalf("ConvertToFile() error = %v", err)
+	}
+
+	assertPDFFile(t, outputPath)
+	streams := extractPDFStreams(t, outputPath)
+	x, ok := firstPDFTextX(streams, "Hello margins")
+	if !ok {
+		t.Fatalf("did not find the expected text in PDF streams:\n%s", streams)
+	}
+	if x < 38 || x > 42 {
+		t.Fatalf("expected text to start near the configured left margin, got x=%.2f", x)
 	}
 }
 
@@ -190,4 +222,19 @@ func pdfColorCommand(r, g, b int, op string) string {
 
 func formatPDFColor(v int) string {
 	return fmt.Sprintf("%.3f", float64(v)/255)
+}
+
+func firstPDFTextX(streams, text string) (float64, bool) {
+	pattern := regexp.MustCompile(`(?s)BT\s+([0-9.]+)\s+([0-9.]+)\s+Td\s+\(` + regexp.QuoteMeta(text) + `\)\s+Tj`)
+	match := pattern.FindStringSubmatch(streams)
+	if match == nil {
+		return 0, false
+	}
+
+	x, err := strconv.ParseFloat(match[1], 64)
+	if err != nil {
+		return 0, false
+	}
+
+	return x, true
 }

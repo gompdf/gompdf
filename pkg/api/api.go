@@ -129,6 +129,12 @@ func (c *Converter) ConvertToFile(htmlContent, outputPath string) error {
 		Height: pageHeight,
 		DPI:    c.options.DPI,
 	})
+	layoutEngine.SetMargins(
+		c.options.MarginTop,
+		c.options.MarginRight,
+		c.options.MarginBottom,
+		c.options.MarginLeft,
+	)
 	layoutEngine.Debug = c.options.Debug
 
 	layoutEngine.SetStyles(computedStyles)
