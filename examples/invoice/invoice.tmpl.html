@@ -4,85 +4,180 @@
   <meta charset="utf-8" />
   <title>Invoice {{.InvoiceNo}}</title>
   <style>
-    :root { --ink:#111827; --muted:#6b7280; --border:#e5e7eb; --bg:#f9fafb; }
-    * { box-sizing: border-box; }
-    body { font-family: Helvetica, Arial, sans-serif; color: var(--ink); margin: 0; }
-    .container { padding: 32px; }
-    .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
-    .h1 { font-size: 28px; margin: 0; }
-    .muted { color: var(--muted); }
-    .box { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: white; }
-    .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; } .mt-4 { margin-top: 16px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
-    th { background: var(--bg); font-weight: 600; }
-    tfoot td { border-top: 2px solid var(--border); }
-    .right { text-align: right; }
-    pre { margin: 0; white-space: pre-wrap; }
-    /* Ensure paragraphs are not justified by the renderer */
-    p { text-align: left; word-spacing: normal; letter-spacing: normal; }
+    body {
+      font-family: Helvetica, Arial, sans-serif;
+      color: #111827;
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .page {
+      padding: 24px;
+    }
+    .title {
+      font-size: 28px;
+      margin: 0 0 6px 0;
+      font-weight: bold;
+    }
+    .muted {
+      color: #6b7280;
+    }
+    .header {
+      width: 100%;
+      border-spacing: 0;
+      margin-bottom: 12px;
+    }
+    .header td {
+      vertical-align: top;
+      padding: 0;
+    }
+    .date-table {
+      width: 100%;
+      border-spacing: 0;
+    }
+    .date-table td {
+      padding: 0 0 6px 0;
+    }
+    .rule {
+      border-top: 1px solid #e5e7eb;
+      height: 0;
+      margin: 12px 0 14px 0;
+    }
+    .billing {
+      width: 100%;
+      border-spacing: 0;
+      margin-bottom: 14px;
+    }
+    .billing td {
+      vertical-align: top;
+      padding: 0;
+    }
+    .card {
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+      padding: 12px;
+    }
+    .section-label {
+      font-size: 11px;
+      font-weight: bold;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .bill-name {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+    .address {
+      color: #6b7280;
+    }
+    .items {
+      width: 100%;
+      border-spacing: 0;
+    }
+    .items th,
+    .items td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+    }
+    .items th {
+      background: #f9fafb;
+      font-weight: bold;
+    }
+    .right {
+      text-align: right;
+    }
+    .items tfoot td {
+      border-top: 2px solid #d1d5db;
+      border-bottom: 0;
+    }
+    .footer {
+      margin-top: 12px;
+      color: #6b7280;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="row">
-      <div>
-        <h1 class="h1">Invoice</h1>
-        <div class="muted">No. {{.InvoiceNo}}</div>
-      </div>
-      <div>
-        <div><strong>Issue date:</strong> {{.IssueDate}}</div>
-        <div><strong>Due date:</strong> {{.DueDate}}</div>
-      </div>
-    </div>
+  <div class="page">
+    <table class="header">
+      <tr>
+        <td width="60%">
+          <div class="title">Invoice</div>
+          <div class="muted">No. {{.InvoiceNo}}</div>
+        </td>
+        <td width="40%" class="right">
+          <table class="date-table">
+            <tr>
+              <td class="right"><strong>Issue date:</strong> {{.IssueDate}}</td>
+            </tr>
+            <tr>
+              <td class="right"><strong>Due date:</strong> {{.DueDate}}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
 
-    <div class="row mt-4">
-      <div class="box" style="flex:1">
-        <div><strong>Bill to</strong></div>
-        <div class="mt-2">{{.BillToName}}</div>
-        <pre class="muted mt-2">{{.BillToAddr}}</pre>
-      </div>
-      <div style="flex:1"></div>
-    </div>
+    <div class="rule"></div>
 
-    <div class="mt-4">
-      <table>
-        <thead>
-          <tr>
-            <th>Description</th>
-            <th class="right">Qty</th>
-            <th class="right">Unit price</th>
-            <th class="right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Items}}
-          <tr>
-            <td>{{.Description}}</td>
-            <td class="right">{{.Qty}}</td>
-            <td class="right">{{printf "%.2f" .UnitPrice}}</td>
-            <td class="right">{{printf "%.2f" (mul .Qty .UnitPrice)}}</td>
-          </tr>
-          {{end}}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="3" class="right"><strong>Subtotal</strong></td>
-            <td class="right">{{printf "%.2f" .Subtotal}}</td>
-          </tr>
-          <tr>
-            <td colspan="3" class="right"><strong>Tax ({{printf "%.0f" (mul .TaxRate 100)}}%)</strong></td>
-            <td class="right">{{printf "%.2f" .TaxAmount}}</td>
-          </tr>
-          <tr>
-            <td colspan="3" class="right"><strong>Total</strong></td>
-            <td class="right"><strong>{{printf "%.2f" .Total}}</strong></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
+    <table class="billing">
+      <tr>
+        <td width="60%">
+          <div class="card">
+            <div class="section-label">Bill to</div>
+            <div class="bill-name">{{.BillToName}}</div>
+            <div class="address">{{.BillToLine1}}</div>
+            <div class="address">{{.BillToLine2}}</div>
+          </div>
+        </td>
+        <td width="40%">
+          <div style="padding-left: 16px;">
+            <div class="section-label">Summary</div>
+            <div class="muted">Invoice date {{.IssueDate}}</div>
+            <div class="muted">Payment due {{.DueDate}}</div>
+          </div>
+        </td>
+      </tr>
+    </table>
 
-    <p class="muted mt-4">Thank you for your business!</p>
+    <table class="items">
+      <thead>
+        <tr>
+          <th width="56%">Description</th>
+          <th width="10%" class="right">Qty</th>
+          <th width="17%" class="right">Unit price</th>
+          <th width="17%" class="right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Items}}
+        <tr>
+          <td>{{.Description}}</td>
+          <td class="right">{{.Qty}}</td>
+          <td class="right">{{printf "%.2f" .UnitPrice}}</td>
+          <td class="right">{{printf "%.2f" (mul .Qty .UnitPrice)}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3" class="right"><strong>Subtotal</strong></td>
+          <td class="right">{{printf "%.2f" .Subtotal}}</td>
+        </tr>
+        <tr>
+          <td colspan="3" class="right"><strong>Tax ({{printf "%.0f" (mul .TaxRate 100)}}%)</strong></td>
+          <td class="right">{{printf "%.2f" .TaxAmount}}</td>
+        </tr>
+        <tr>
+          <td colspan="3" class="right"><strong>Total</strong></td>
+          <td class="right"><strong>{{printf "%.2f" .Total}}</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div class="footer">Thank you for your business!</div>
   </div>
 </body>
 </html>

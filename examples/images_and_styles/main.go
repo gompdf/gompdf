@@ -20,6 +20,8 @@ func main() {
 	opts.MarginRight = 36
 	opts.MarginBottom = 36
 	opts.MarginLeft = 36
+	opts.RenderBackgrounds = true
+	opts.RenderBorders = true
 	// Allow relative resources like styles.css and logo.svg to be discovered
 	opts.ResourcePaths = []string{cwd}
 

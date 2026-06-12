@@ -2,11 +2,15 @@ package api
 
 import (
 	"bytes"
+	"compress/zlib"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +62,43 @@ func TestConvertFileWithLocalImage(t *testing.T) {
 	assertPDFFile(t, outputPath)
 }
 
+func TestConvertToFileRendersStyledShorthands(t *testing.T) {
+	converter := NewWithOptions(DefaultOptions())
+	converter.options.RenderBackgrounds = true
+	converter.options.RenderBorders = true
+	outputPath := filepath.Join(t.TempDir(), "styled.pdf")
+
+	html := `<!doctype html>
+<html>
+  <head>
+    <style>
+      body { margin: 0; }
+      .header { border-bottom: 1px solid #e5e7eb; padding: 24px 0; }
+      .card { border: 1px solid #e5e7eb; background: #f9fafb; padding: 16px; }
+      .footer { border-top: 1px solid #e5e7eb; color: #6b7280; }
+    </style>
+  </head>
+  <body>
+    <header class="header">Header</header>
+    <section class="card">Card</section>
+    <footer class="footer">Footer</footer>
+  </body>
+</html>`
+
+	if err := converter.ConvertToFile(html, outputPath); err != nil {
+		t.Fatalf("ConvertToFile() error = %v", err)
+	}
+
+	assertPDFFile(t, outputPath)
+	streams := extractPDFStreams(t, outputPath)
+	if !strings.Contains(streams, pdfColorCommand(249, 250, 251, "rg")) {
+		t.Fatalf("expected card background fill color in PDF streams:\n%s", streams)
+	}
+	if !strings.Contains(streams, pdfColorCommand(229, 231, 235, "RG")) {
+		t.Fatalf("expected border stroke color in PDF streams:\n%s", streams)
+	}
+}
+
 func assertPDFFile(t *testing.T, path string) {
 	t.Helper()
 
@@ -95,4 +136,58 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func extractPDFStreams(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	var out strings.Builder
+	for {
+		start := bytes.Index(data, []byte("stream"))
+		if start == -1 {
+			break
+		}
+		data = data[start+len("stream"):]
+		if len(data) > 0 && data[0] == '\r' {
+			data = data[1:]
+		}
+		if len(data) > 0 && data[0] == '\n' {
+			data = data[1:]
+		}
+
+		end := bytes.Index(data, []byte("endstream"))
+		if end == -1 {
+			break
+		}
+
+		chunk := bytes.TrimRight(data[:end], "\r\n")
+		if zr, err := zlib.NewReader(bytes.NewReader(chunk)); err == nil {
+			if decoded, readErr := io.ReadAll(zr); readErr == nil {
+				out.Write(decoded)
+			}
+			zr.Close()
+		}
+
+		data = data[end+len("endstream"):]
+	}
+
+	return out.String()
+}
+
+func pdfColorCommand(r, g, b int, op string) string {
+	return strings.Join([]string{
+		formatPDFColor(r),
+		formatPDFColor(g),
+		formatPDFColor(b),
+		op,
+	}, " ")
+}
+
+func formatPDFColor(v int) string {
+	return fmt.Sprintf("%.3f", float64(v)/255)
 }

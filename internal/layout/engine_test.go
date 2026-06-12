@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/gompdf/gompdf/internal/parser/css"
@@ -52,6 +53,53 @@ func TestLayoutParagraphWrapsText(t *testing.T) {
 	}
 	if firstLine.Width <= 0 || firstLine.Height <= 0 {
 		t.Fatalf("expected positive dimensions for the first line, got width=%v height=%v", firstLine.Width, firstLine.Height)
+	}
+}
+
+func TestLayoutParagraphPreservesInlineSpacing(t *testing.T) {
+	doc, err := htmlparser.NewParser().ParseString(`<!doctype html>
+<html>
+  <body>
+    <p>Loads <code>styles.css</code> and renders</p>
+  </body>
+</html>`)
+	if err != nil {
+		t.Fatalf("ParseString() error = %v", err)
+	}
+
+	cssParser := css.NewParser()
+	sheet, err := cssParser.ParseString(`p { font-size: 12px; }`)
+	if err != nil {
+		t.Fatalf("ParseString() error = %v", err)
+	}
+
+	styleEngine := style.NewStyleEngine()
+	styleEngine.AddStylesheet(sheet)
+	styles := styleEngine.ComputeStyles(doc)
+
+	SetMeasurementOrientation("P")
+
+	engine := NewEngine()
+	engine.Debug = false
+	engine.SetOptions(Options{Width: 500, Height: 400, DPI: 96})
+	engine.SetStyles(styles)
+
+	root := engine.Layout(doc)
+	paragraph := findBlockByTag(root, "p")
+	if paragraph == nil {
+		t.Fatal("expected to find a paragraph block in the layout tree")
+	}
+
+	got := make([]string, 0, len(paragraph.Children))
+	for _, child := range paragraph.Children {
+		if ib, ok := child.(*InlineBox); ok {
+			got = append(got, ib.Text)
+		}
+	}
+
+	want := []string{"Loads", " ", "styles.css", " ", "and", " ", "renders"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected inline token sequence: got %v want %v", got, want)
 	}
 }
 

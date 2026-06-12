@@ -1,6 +1,7 @@
 package style
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/gompdf/gompdf/internal/parser/css"
@@ -123,26 +124,202 @@ func (e *StyleEngine) applyInlineStyles(style ComputedStyle, node *html.Node) {
 // applyDeclarations applies CSS declarations to a style
 func (e *StyleEngine) applyDeclarations(style ComputedStyle, declarations []*css.Declaration, specificity Specificity, source Source) {
 	for _, decl := range declarations {
-		property := decl.Property
-		existing, exists := style[property]
+		for _, normalized := range normalizeDeclaration(decl) {
+			property := normalized.Property
+			existing, exists := style[property]
 
-		// Apply the new declaration if it wins on importance, origin/source, or specificity.
-		// When importance, origin and specificity tie, the later declaration wins because
-		// stylesheets and rules are processed in document order.
-		if !exists ||
-			(decl.Important && !existing.Important) ||
-			(decl.Important == existing.Important && source > existing.Source) ||
-			(decl.Important == existing.Important && source == existing.Source && compareSpecificity(specificity, existing.Specificity) >= 0) {
+			// Apply the new declaration if it wins on importance, origin/source, or specificity.
+			// When importance, origin and specificity tie, the later declaration wins because
+			// stylesheets and rules are processed in document order.
+			if !exists ||
+				(normalized.Important && !existing.Important) ||
+				(normalized.Important == existing.Important && source > existing.Source) ||
+				(normalized.Important == existing.Important && source == existing.Source && compareSpecificity(specificity, existing.Specificity) >= 0) {
 
-			style[property] = StyleProperty{
-				Name:        property,
-				Value:       decl.Value,
-				Important:   decl.Important,
-				Source:      source,
-				Specificity: specificity,
+				style[property] = StyleProperty{
+					Name:        property,
+					Value:       normalized.Value,
+					Important:   normalized.Important,
+					Source:      source,
+					Specificity: specificity,
+				}
 			}
 		}
 	}
+}
+
+// normalizeDeclaration expands the small set of shorthands this MVP renderer
+// consumes directly into the canonical properties used by layout/rendering.
+func normalizeDeclaration(decl *css.Declaration) []*css.Declaration {
+	if decl == nil {
+		return nil
+	}
+
+	property := strings.ToLower(strings.TrimSpace(decl.Property))
+	value := strings.TrimSpace(decl.Value)
+	if property == "" {
+		return nil
+	}
+
+	switch property {
+	case "background":
+		if isCSSColorValue(value) {
+			return []*css.Declaration{{
+				Property:  "background-color",
+				Value:     value,
+				Important: decl.Important,
+			}}
+		}
+		return nil
+	case "border":
+		width, color, ok := parseBorderShorthand(value)
+		if !ok {
+			return nil
+		}
+		out := make([]*css.Declaration, 0, 10)
+		if width != "" {
+			out = append(out, &css.Declaration{
+				Property:  "border-width",
+				Value:     width,
+				Important: decl.Important,
+			})
+			for _, side := range []string{"top", "right", "bottom", "left"} {
+				out = append(out, &css.Declaration{
+					Property:  "border-" + side + "-width",
+					Value:     width,
+					Important: decl.Important,
+				})
+			}
+		}
+		if color != "" {
+			out = append(out, &css.Declaration{
+				Property:  "border-color",
+				Value:     color,
+				Important: decl.Important,
+			})
+			for _, side := range []string{"top", "right", "bottom", "left"} {
+				out = append(out, &css.Declaration{
+					Property:  "border-" + side + "-color",
+					Value:     color,
+					Important: decl.Important,
+				})
+			}
+		}
+		return out
+	case "border-top", "border-right", "border-bottom", "border-left":
+		width, color, ok := parseBorderShorthand(value)
+		if !ok {
+			return nil
+		}
+		side := strings.TrimPrefix(property, "border-")
+		out := make([]*css.Declaration, 0, 2)
+		if width != "" {
+			out = append(out, &css.Declaration{
+				Property:  "border-" + side + "-width",
+				Value:     width,
+				Important: decl.Important,
+			})
+		}
+		if color != "" {
+			out = append(out, &css.Declaration{
+				Property:  "border-" + side + "-color",
+				Value:     color,
+				Important: decl.Important,
+			})
+		}
+		return out
+	default:
+		return []*css.Declaration{{
+			Property:  decl.Property,
+			Value:     decl.Value,
+			Important: decl.Important,
+		}}
+	}
+}
+
+func parseBorderShorthand(value string) (width, color string, ok bool) {
+	parts := strings.Fields(value)
+	if len(parts) == 0 {
+		return "", "", false
+	}
+
+	for _, part := range parts {
+		token := strings.ToLower(strings.TrimSpace(part))
+		switch {
+		case token == "none" || token == "hidden":
+			width = "0"
+			ok = true
+		case width == "" && isBorderWidthValue(token):
+			width = part
+			ok = true
+		case color == "" && isCSSColorValue(token):
+			color = part
+			ok = true
+		}
+	}
+
+	return width, color, ok
+}
+
+func isBorderWidthValue(value string) bool {
+	if value == "0" || value == "0px" || value == "0pt" || value == "0em" || value == "0rem" {
+		return true
+	}
+
+	for _, suffix := range []string{"px", "pt", "em", "rem"} {
+		if strings.HasSuffix(value, suffix) {
+			if _, err := strconv.ParseFloat(strings.TrimSuffix(value, suffix), 64); err == nil {
+				return true
+			}
+			return false
+		}
+	}
+
+	if _, err := strconv.ParseFloat(value, 64); err == nil {
+		return true
+	}
+
+	return false
+}
+
+var cssNamedColors = map[string]struct{}{
+	"black":   {},
+	"white":   {},
+	"red":     {},
+	"green":   {},
+	"blue":    {},
+	"yellow":  {},
+	"orange":  {},
+	"purple":  {},
+	"pink":    {},
+	"gray":    {},
+	"grey":    {},
+	"silver":  {},
+	"maroon":  {},
+	"olive":   {},
+	"lime":    {},
+	"aqua":    {},
+	"teal":    {},
+	"navy":    {},
+	"fuchsia": {},
+	"cyan":    {},
+	"magenta": {},
+	"brown":   {},
+}
+
+func isCSSColorValue(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return false
+	}
+	if strings.HasPrefix(value, "#") {
+		return true
+	}
+	if strings.HasPrefix(value, "rgb(") || strings.HasPrefix(value, "rgba(") {
+		return true
+	}
+	_, ok := cssNamedColors[value]
+	return ok
 }
 
 // selectorMatches checks if an element matches a CSS selector

@@ -15,6 +15,7 @@ import (
 	"github.com/gompdf/gompdf/internal/layout"
 	"github.com/gompdf/gompdf/internal/pagination"
 	"github.com/gompdf/gompdf/internal/res"
+	"github.com/gompdf/gompdf/internal/style"
 	pdftext "github.com/gompdf/gompdf/internal/text"
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
@@ -401,43 +402,11 @@ func (r *Renderer) renderBorders(pdf *fpdf.Fpdf, box layout.Box) {
 		return
 	}
 	hasCustomBorder := false
-
 	switch b := box.(type) {
 	case *layout.BlockBox:
-		if borderColor, exists := b.Style["border-color"]; exists && borderColor.Value != "" {
-			color := parseColor(borderColor.Value)
-			pdf.SetDrawColor(color[0], color[1], color[2])
-
-			width := 1.0
-			if borderWidth, exists := b.Style["border-width"]; exists {
-				width = parseFloat(borderWidth.Value, 1.0)
-			}
-			pdf.SetLineWidth(width)
-
-			pdf.Rect(box.GetX(), box.GetY(), box.GetWidth(), box.GetHeight(), "D")
-			hasCustomBorder = true
-
-			if r.Debug {
-				fmt.Printf("Applied border color %v with width %.1f to block box\n", color, width)
-			}
-		}
+		hasCustomBorder = r.renderStyledBorders(pdf, b.Style, box.GetX(), box.GetY(), box.GetWidth(), box.GetHeight())
 	case *layout.InlineBox:
-		if borderColor, exists := b.Style["border-color"]; exists && borderColor.Value != "" {
-			color := parseColor(borderColor.Value)
-			pdf.SetDrawColor(color[0], color[1], color[2])
-			width := 1.0
-			if borderWidth, exists := b.Style["border-width"]; exists {
-				width = parseFloat(borderWidth.Value, 1.0)
-			}
-			pdf.SetLineWidth(width)
-
-			pdf.Rect(box.GetX(), box.GetY(), box.GetWidth(), box.GetHeight(), "D")
-			hasCustomBorder = true
-
-			if r.Debug {
-				fmt.Printf("Applied border color %v with width %.1f to inline box\n", color, width)
-			}
-		}
+		hasCustomBorder = r.renderStyledBorders(pdf, b.Style, box.GetX(), box.GetY(), box.GetWidth(), box.GetHeight())
 	}
 
 	if r.DebugDrawBoxes && !hasCustomBorder {
@@ -445,6 +414,71 @@ func (r *Renderer) renderBorders(pdf *fpdf.Fpdf, box layout.Box) {
 		pdf.SetLineWidth(0.5)
 		pdf.Rect(box.GetX(), box.GetY(), box.GetWidth(), box.GetHeight(), "D")
 	}
+}
+
+// renderStyledBorders draws borders from the canonical properties produced by
+// style normalization. It prefers side-specific widths/colors when present and
+// falls back to the uniform border-width/border-color pair.
+func (r *Renderer) renderStyledBorders(pdf *fpdf.Fpdf, st style.ComputedStyle, x, y, w, h float64) bool {
+	type borderSide struct {
+		width float64
+		color [3]int
+		ok    bool
+	}
+
+	resolve := func(side string) borderSide {
+		colorProp, colorOK := st["border-"+side+"-color"]
+		if !colorOK || strings.TrimSpace(colorProp.Value) == "" {
+			colorProp, colorOK = st["border-color"]
+		}
+		if !colorOK || strings.TrimSpace(colorProp.Value) == "" {
+			return borderSide{}
+		}
+
+		width := 1.0
+		if widthProp, ok := st["border-"+side+"-width"]; ok && strings.TrimSpace(widthProp.Value) != "" {
+			width = parseFloat(widthProp.Value, 1.0)
+		} else if widthProp, ok := st["border-width"]; ok && strings.TrimSpace(widthProp.Value) != "" {
+			width = parseFloat(widthProp.Value, 1.0)
+		}
+
+		if width <= 0 {
+			return borderSide{}
+		}
+
+		return borderSide{
+			width: width,
+			color: parseColor(colorProp.Value),
+			ok:    true,
+		}
+	}
+
+	sides := []struct {
+		name string
+		x1   float64
+		y1   float64
+		x2   float64
+		y2   float64
+	}{
+		{name: "top", x1: x, y1: y, x2: x + w, y2: y},
+		{name: "right", x1: x + w, y1: y, x2: x + w, y2: y + h},
+		{name: "bottom", x1: x, y1: y + h, x2: x + w, y2: y + h},
+		{name: "left", x1: x, y1: y, x2: x, y2: y + h},
+	}
+
+	rendered := false
+	for _, s := range sides {
+		spec := resolve(s.name)
+		if !spec.ok {
+			continue
+		}
+		pdf.SetDrawColor(spec.color[0], spec.color[1], spec.color[2])
+		pdf.SetLineWidth(spec.width)
+		pdf.Line(s.x1, s.y1, s.x2, s.y2)
+		rendered = true
+	}
+
+	return rendered
 }
 
 // renderText renders text to the PDF
@@ -661,6 +695,45 @@ func parseCSSFloat(value string, defaultValue float64) float64 {
 
 // parseColor parses a CSS color value
 func parseColor(value string) [3]int {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "black":
+		return [3]int{0, 0, 0}
+	case "white":
+		return [3]int{255, 255, 255}
+	case "red":
+		return [3]int{255, 0, 0}
+	case "green":
+		return [3]int{0, 128, 0}
+	case "blue":
+		return [3]int{0, 0, 255}
+	case "gray", "grey":
+		return [3]int{128, 128, 128}
+	case "silver":
+		return [3]int{192, 192, 192}
+	case "maroon":
+		return [3]int{128, 0, 0}
+	case "olive":
+		return [3]int{128, 128, 0}
+	case "lime":
+		return [3]int{0, 255, 0}
+	case "aqua":
+		return [3]int{0, 255, 255}
+	case "teal":
+		return [3]int{0, 128, 128}
+	case "navy":
+		return [3]int{0, 0, 128}
+	case "fuchsia", "magenta":
+		return [3]int{255, 0, 255}
+	case "orange":
+		return [3]int{255, 165, 0}
+	case "purple":
+		return [3]int{128, 0, 128}
+	case "pink":
+		return [3]int{255, 192, 203}
+	case "brown":
+		return [3]int{165, 42, 42}
+	}
+
 	if strings.HasPrefix(value, "#") {
 		if r, g, b, ok := parseHexColor(value); ok {
 			return [3]int{r, g, b}
@@ -826,28 +899,10 @@ func (r *Renderer) renderTableElement(pdf *fpdf.Fpdf, box *layout.BlockBox, tag 
 		return
 	}
 
-	hasBorder := false
-	borderWidth := 0.0
-	borderColor := [3]int{0, 0, 0}
-
-	if width, exists := box.Style["border-width"]; exists && width.Value != "" && width.Value != "0" {
-		borderWidth = parseFloat(width.Value, 0.0)
-		hasBorder = borderWidth > 0
-	}
-
-	if color, exists := box.Style["border-color"]; exists && color.Value != "" {
-		borderColor = parseColor(color.Value)
-	}
-
-	if hasBorder {
-		pdf.SetDrawColor(borderColor[0], borderColor[1], borderColor[2])
-		pdf.SetLineWidth(borderWidth)
-		pdf.Rect(box.X, box.Y, box.Width, box.Height, "D")
-
-		if r.Debug {
-			fmt.Printf("Rendered border for %s: x=%.2f, y=%.2f, w=%.2f, h=%.2f\n",
-				tag, box.X, box.Y, box.Width, box.Height)
-		}
+	hasBorder := r.renderStyledBorders(pdf, box.Style, box.X, box.Y, box.Width, box.Height)
+	if hasBorder && r.Debug {
+		fmt.Printf("Rendered border for %s: x=%.2f, y=%.2f, w=%.2f, h=%.2f\n",
+			tag, box.X, box.Y, box.Width, box.Height)
 	}
 
 	if tag == "th" {

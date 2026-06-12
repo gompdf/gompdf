@@ -1325,7 +1325,6 @@ func (e *Engine) collectInlineRuns(n *html.Node, inherited style.ComputedStyle, 
 
 // splitTokens splits text into tokens of words and spaces
 func splitTokens(s string) []string {
-	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil
 	}

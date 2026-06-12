@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/gompdf/gompdf"
 )
@@ -22,7 +21,8 @@ type InvoiceData struct {
 	IssueDate   string
 	DueDate     string
 	BillToName  string
-	BillToAddr  string
+	BillToLine1 string
+	BillToLine2 string
 	Items       []LineItem
 	Subtotal    float64
 	TaxRate     float64
@@ -42,16 +42,17 @@ func sampleData() InvoiceData {
 	}
 	rate := 0.07
 	return InvoiceData{
-		InvoiceNo:  "INV-2025-091",
-		IssueDate:  time.Now().Format("2006-01-02"),
-		DueDate:    time.Now().AddDate(0, 0, 14).Format("2006-01-02"),
-		BillToName: "Acme, Inc.",
-		BillToAddr: "123 Market Street\nSan Francisco, CA 94107",
-		Items:      items,
-		Subtotal:   subtotal,
-		TaxRate:    rate,
-		TaxAmount:  subtotal * rate,
-		Total:      subtotal * (1 + rate),
+		InvoiceNo:   "INV-2025-091",
+		IssueDate:   "2025-09-12",
+		DueDate:     "2025-09-26",
+		BillToName:  "Acme, Inc.",
+		BillToLine1: "123 Market Street",
+		BillToLine2: "San Francisco, CA 94107",
+		Items:       items,
+		Subtotal:    subtotal,
+		TaxRate:     rate,
+		TaxAmount:   subtotal * rate,
+		Total:       subtotal * (1 + rate),
 	}
 }
 
@@ -97,6 +98,8 @@ func main() {
 
 	opts := gompdf.DefaultOptions()
 	opts.MarginTop, opts.MarginRight, opts.MarginBottom, opts.MarginLeft = 36, 36, 36, 36
+	opts.RenderBackgrounds = true
+	opts.RenderBorders = true
 	conv := gompdf.NewWithOptions(opts)
 
 	out := "invoice.pdf"
